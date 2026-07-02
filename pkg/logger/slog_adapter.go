@@ -43,7 +43,6 @@ func (h *SlogAdapter) Enabled(_ context.Context, level slog.Level) bool {
 // Handle 处理单条 slog 日志并写入 zap
 func (h *SlogAdapter) Handle(_ context.Context, r slog.Record) error {
 	fields := make([]zap.Field, 0, r.NumAttrs())
-	errText := ""
 	src := callerFromPC(r.PC)
 	callers := make([]string, 0, len(h.callerChain)+2)
 	callers = append(callers, h.callerChain...)
@@ -57,9 +56,6 @@ func (h *SlogAdapter) Handle(_ context.Context, r slog.Record) error {
 			}
 			return true
 		}
-		if a.Key == "error" {
-			errText = strings.TrimSpace(fmt.Sprint(a.Value.Any()))
-		}
 		fields = append(fields, zap.Any(a.Key, a.Value.Any()))
 		return true
 	})
@@ -71,27 +67,7 @@ func (h *SlogAdapter) Handle(_ context.Context, r slog.Record) error {
 		}
 	}
 
-	level := r.Level
-	msg := r.Message
-	if strings.EqualFold(strings.TrimSpace(msg), "Read error") {
-		errLower := strings.ToLower(errText)
-		if strings.Contains(errLower, "connection reset by peer") ||
-			strings.Contains(errLower, "connection timed out") ||
-			strings.Contains(errLower, "i/o timeout") ||
-			strings.Contains(errLower, "use of closed network connection") ||
-			strings.Contains(errLower, "broken pipe") ||
-			strings.Contains(errLower, "eof") {
-			msg = "SIP TCP 通道读异常"
-			// 连接被显式关闭或切换通道导致 EOF/closed，降为 DEBUG；其他断连降为 WARN。
-			if strings.Contains(errLower, "use of closed network connection") || strings.Contains(errLower, "eof") {
-				level = slog.LevelDebug
-			} else {
-				level = slog.LevelWarn
-			}
-		}
-	}
-
-	h.writeWithCaller(toZapLevel(level), r.Time, msg, fields, src)
+	h.writeWithCaller(toZapLevel(r.Level), r.Time, r.Message, fields, src)
 
 	return nil
 }

@@ -787,13 +787,6 @@ func canonicalLocalPhone(v string) string {
 		s = strings.TrimSpace(s[4:])
 		lower = strings.ToLower(s)
 	}
-	if strings.HasPrefix(lower, "sip:") {
-		s = strings.TrimSpace(s[4:])
-		if idx := strings.IndexAny(s, "@;>"); idx >= 0 {
-			s = s[:idx]
-		}
-	}
-	s = strings.Trim(s, "<>\"")
 	s = strings.ReplaceAll(s, " ", "")
 	s = strings.ReplaceAll(s, "-", "")
 	s = strings.ReplaceAll(s, "(", "")

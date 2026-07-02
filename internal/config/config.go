@@ -74,43 +74,8 @@ type Config struct {
 	Webhook      WebhookConfig      `mapstructure:"webhook"`
 	Email        EmailConfig        `mapstructure:"email"`
 	Web          WebConfig          `mapstructure:"web"`
-	VoiceGateway VoiceGatewayConfig `mapstructure:"voice_gateway"`
 }
 
-// 无需显式 enabled 字段，sip.listen 非空时自动启用。
-type VoiceGatewayConfig struct {
-	// SIP 服务配置
-	SIP struct {
-		Listen     string `mapstructure:"listen"`      // 监听地址，如 "0.0.0.0:5060"
-		Transport  string `mapstructure:"transport"`   // 传输协议: udp/tcp/tls
-		Realm      string `mapstructure:"realm"`       // SIP 认证域
-		ExternalIP string `mapstructure:"external_ip"` // 公网 IP (可选)
-	} `mapstructure:"sip"`
-
-	// 用户配置
-	Users []VoiceGatewayUserConfig `mapstructure:"users"`
-
-	// 媒体配置
-	Media struct {
-		RTPPortMin int      `mapstructure:"rtp_port_min"`
-		RTPPortMax int      `mapstructure:"rtp_port_max"`
-		Codecs     []string `mapstructure:"codecs"`
-	} `mapstructure:"media"`
-
-	// 推送配置 (Linphone APNs/FCM)
-	LinphonePush struct {
-		LinphoneUser     string `mapstructure:"linphone_user"`
-		LinphonePassword string `mapstructure:"linphone_password"`
-	} `mapstructure:"linphone_push"`
-}
-
-// VoiceGatewayUserConfig 语音用户配置
-type VoiceGatewayUserConfig struct {
-	Username    string `mapstructure:"username"`
-	Password    string `mapstructure:"password"`
-	DisplayName string `mapstructure:"display_name"`
-	DeviceID    string `mapstructure:"device_id"` // 绑定的设备 ID
-}
 
 type WebConfig struct {
 	Username string `mapstructure:"username"`
@@ -231,11 +196,8 @@ func Load(path string) (*Config, error) {
 	viper.SetDefault("email.use_ssl", false)
 	viper.SetDefault("web.username", "admin")
 	viper.SetDefault("web.password", "admin")
-	viper.SetDefault("imscore.use_sipgo_udp", false)
 
 	// 官方默认推送秘钥与用户 (留空则不执行 Push)
-	viper.SetDefault("voice_gateway.linphone_push.linphone_user", "")
-	viper.SetDefault("voice_gateway.linphone_push.linphone_password", "")
 
 	// 环境变量覆盖支持 (例如 PROXY_DEVICES_0_APN)
 	viper.SetEnvPrefix("PROXY")

@@ -50,7 +50,6 @@ type SMSDeliveryPart struct {
 	InReplyTo string     `gorm:"column:in_reply_to;index" json:"in_reply_to"`
 	RPMR      int        `gorm:"column:rp_mr;index" json:"rp_mr"`
 	State     string     `gorm:"column:state;index" json:"state"`
-	SIPCode   int        `gorm:"column:sip_code" json:"sip_code"`
 	RPCause   int        `gorm:"column:rp_cause" json:"rp_cause"`
 	ErrorText string     `gorm:"column:error_text" json:"error_text"`
 	SentAt    time.Time  `gorm:"column:sent_at;index" json:"sent_at"`
@@ -146,7 +145,7 @@ func UpsertSMSDeliveryPart(messageID string, partNo int, callID string, rpMR int
 	}).Create(&part).Error
 }
 
-func MarkSMSDeliveryPartReport(inReplyTo, callID, deviceID string, rpMR int, state string, sipCode int, rpCause int, errText string, at time.Time) (SMSDeliveryPart, error) {
+func MarkSMSDeliveryPartReport(inReplyTo, callID, deviceID string, rpMR int, state string, rpCause int, errText string, at time.Time) (SMSDeliveryPart, error) {
 	if DB == nil {
 		return SMSDeliveryPart{}, gorm.ErrRecordNotFound
 	}
@@ -208,7 +207,6 @@ func MarkSMSDeliveryPartReport(inReplyTo, callID, deviceID string, rpMR int, sta
 	updates := map[string]any{
 		"in_reply_to": inReplyTo,
 		"state":       state,
-		"sip_code":    sipCode,
 		"rp_cause":    rpCause,
 		"error_text":  strings.TrimSpace(errText),
 		"report_at":   &reportAt,

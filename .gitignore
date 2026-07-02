@@ -79,4 +79,5 @@ vendor/
 
 # compiled binary
 /vohive
+/openvohive
 /main

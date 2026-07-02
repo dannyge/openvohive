@@ -16,7 +16,7 @@
 >
 > 提交包含大量变更是因为做了 commit 合并, 之前是想挂这个仓库在自己账号下面的, 但是后面看见原作者在他仓库下面的 issues 回复, 害怕被他报复所以才选择现在这种方式...我不敢用真实信息来提交代码...
 >
-> 玩得开心!
+> 玩得开心! (另外分支里面可能会有你想要的...)
 
 ---
 
@@ -34,7 +34,6 @@
 | 通信与短信中心 | 统一界面/API 处理 AT 短信收发、会话与联系人管理、USSD 交互, 短信落库可查 |
 | eSIM 管理 | 通过 AT 指令通道直接管理 eSIM 芯片, 支持 Profile 下载、启用/停用、重命名、删除 |
 | 全渠道通知 | 重要短信及系统告警可推送至 Telegram、Email、Webhook 等 (砍了很多没必要的, 比如 QQ 和飞书. 想要使用飞书直接用 Webhook POST 就行) |
-| SIP 语音网关 | 内建 SIP Registrar, 兼容 Linphone 等软电话, 支持 CS Call 通话管理 (这个我的大疆模块没有音频没法测试) |
 | 多架构构建 | 原生支持 amd64/arm64/arm7 跨平台编译, 路由器到边缘节点均可部署 |
 
 ## 典型应用场景
@@ -43,7 +42,7 @@
 
 ## 架构与技术栈
 
-- **Backend**：Go 1.26+（Gin、GORM、Viper、sipgo、euicc-go）
+- **Backend**：Go 1.26+（Gin、GORM、Viper、euicc-go）
 - **Frontend**：Bun + Vue 3 + Vite + TailwindCSS + Element Plus
 - **Database**：SQLite（`vohive.db`）
 

@@ -50,7 +50,7 @@ func NormalizeSMSEncoding(raw string) (SMSEncoding, error) {
 	}
 }
 
-// DecodeBodyMaybeHex 尝试把 HTTP/SIP 载荷按十六进制字符串解码，否则原样返回。
+// DecodeBodyMaybeHex 尝试把 HTTP 载荷按十六进制字符串解码，否则原样返回。
 func DecodeBodyMaybeHex(body []byte) ([]byte, error) {
 	s := strings.TrimSpace(string(body))
 	if s == "" {

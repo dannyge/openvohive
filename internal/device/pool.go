@@ -14,13 +14,11 @@ import (
 	"github.com/openvohive/openvohive/internal/backend"
 	"github.com/openvohive/openvohive/internal/cardpolicy"
 	"github.com/openvohive/openvohive/internal/config"
-	"github.com/openvohive/openvohive/internal/cscall"
 	"github.com/openvohive/openvohive/internal/db"
 	"github.com/openvohive/openvohive/internal/esim"
 	mbimcore "github.com/openvohive/openvohive/internal/mbim"
 	"github.com/openvohive/openvohive/internal/modem"
 	qmicore "github.com/openvohive/openvohive/internal/qmi"
-	"github.com/openvohive/openvohive/internal/sipgw"
 	"github.com/openvohive/openvohive/pkg/logger"
 	"github.com/openvohive/openvohive/pkg/smscodec"
 
@@ -102,7 +100,6 @@ type Worker struct {
 	ESIMQMITransport esim.QMIAPDUTransportLifecycle
 	Pool             *Pool
 	EsimMgr          *esim.Manager
-	CSCallMgr        *cscall.Manager
 	stop             chan struct{}
 	stopOnce         sync.Once
 
@@ -169,8 +166,6 @@ type Pool struct {
 	dataConnectHandlers       []func(deviceID string)
 	rescanAndReconnectForTest func() error
 
-	// SIP 注册器 (用于 CS 域语音桥接查路由)
-	sipRegistrar *sipgw.Registrar
 
 	lifecycle          *lifecycleCoordinator
 	simEventMu         sync.Mutex

@@ -1,24 +1,5 @@
 package device
 
-import (
-	"github.com/openvohive/openvohive/internal/sipgw"
-)
-
-// SetSIPRegistrar 设置 SIP Registrar 用于 CS 通话桥接。
-func (p *Pool) SetSIPRegistrar(r *sipgw.Registrar) {
-	if p == nil {
-		return
-	}
-	p.mu.Lock()
-	p.sipRegistrar = r
-	for _, w := range p.workers {
-		if w.Config.AudioDevice != "" && w.CSCallMgr == nil {
-			w.CSCallMgr = newCSCallManagerForWorker(w, r)
-		}
-	}
-	p.mu.Unlock()
-}
-
 // SMSOutcome DTO。
 type SMSOutcome struct {
 	MessageID     string

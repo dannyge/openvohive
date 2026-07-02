@@ -18,27 +18,12 @@ import (
 	"github.com/openvohive/openvohive/internal/db"
 	"github.com/openvohive/openvohive/internal/device"
 	"github.com/openvohive/openvohive/internal/notify"
-	"github.com/openvohive/openvohive/internal/sipgw"
 
 	"github.com/openvohive/openvohive/pkg/logger"
 	"github.com/openvohive/openvohive/web"
-
-	"github.com/emiago/sipgo/sip"
 )
-
 func main() {
-	// 开启 SIP_DEBUG 以排查问题（针对旧系统或备用系统）
-	os.Setenv("SIP_DEBUG", "false")
 
-	sipLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
-	sip.SetDefaultLogger(sipLogger)
-	sip.SIPDebug = false
-	// 绕过 sipgo 底层硬编码的 UDP MTU 限制（默认 1500），
-	// 防止由于包含 APNs/FCM 推送 Token 的超长 Contact URI 导致 UDP 发送直接报错。
-	// 大包会自动在 IP 层被切片(IP Fragmentation)。
-	sip.UDPMTUSize = 65535
 	// Parse flags
 	var configPath string
 	var backendOnly bool
@@ -118,83 +103,6 @@ func main() {
 		pool.SetNotifier(notifyMgr)
 	}
 
-	var sipRegistrar *sipgw.Registrar
-	if cfg.VoiceGateway.SIP.Listen != "" {
-		sipgwCfg := sipgw.Config{
-			Enabled: true,
-			SIP: sipgw.SIPConfig{
-				Listen:     cfg.VoiceGateway.SIP.Listen,
-				Transport:  cfg.VoiceGateway.SIP.Transport,
-				Realm:      cfg.VoiceGateway.SIP.Realm,
-				ExternalIP: cfg.VoiceGateway.SIP.ExternalIP,
-			},
-			Media: sipgw.MediaConfig{
-				RTPPortMin: cfg.VoiceGateway.Media.RTPPortMin,
-				RTPPortMax: cfg.VoiceGateway.Media.RTPPortMax,
-				Codecs:     cfg.VoiceGateway.Media.Codecs,
-			},
-			LinphonePush: sipgw.LinphonePushConfig{
-				LinphoneUser:     cfg.VoiceGateway.LinphonePush.LinphoneUser,
-				LinphonePassword: cfg.VoiceGateway.LinphonePush.LinphonePassword,
-			},
-		}
-		for _, u := range cfg.VoiceGateway.Users {
-			sipgwCfg.Users = append(sipgwCfg.Users, sipgw.UserConfig{
-				Username:    u.Username,
-				Password:    u.Password,
-				DisplayName: u.DisplayName,
-				DeviceID:    u.DeviceID,
-			})
-		}
-		if sipgwCfg.SIP.Transport == "" {
-			sipgwCfg.SIP.Transport = "udp"
-		}
-		if sipgwCfg.SIP.Realm == "" {
-			sipgwCfg.SIP.Realm = "vohive.local"
-		}
-		if sipgwCfg.Media.RTPPortMin == 0 {
-			sipgwCfg.Media.RTPPortMin = 10000
-		}
-		if sipgwCfg.Media.RTPPortMax == 0 {
-			sipgwCfg.Media.RTPPortMax = 20000
-		}
-
-		sipRegistrar, err = sipgw.NewRegistrar(sipgwCfg)
-		if err != nil {
-			logger.Error("Registrar 初始化失败", "err", err)
-		} else {
-			sipRegistrar.SetOnInvite(func(deviceID string, req *sip.Request, tx sip.ServerTransaction) {
-				if w := pool.GetWorker(deviceID); w != nil && w.CSCallMgr != nil {
-					w.CSCallMgr.HandleOutboundInvite(deviceID, req, tx)
-				} else {
-					logger.Error("Service Unavailable - No Call Manager")
-					tx.Respond(sip.NewResponseFromRequest(req, 503, "Service Unavailable - No Call Manager", nil))
-				}
-			})
-			sipRegistrar.SetOnCancel(func(deviceID string, req *sip.Request, tx sip.ServerTransaction) {
-				callID := req.CallID().Value()
-				if w := pool.GetWorker(deviceID); w != nil && w.CSCallMgr != nil && w.CSCallMgr.HasCall(callID) {
-					w.CSCallMgr.HandleClientCancel(callID)
-					tx.Respond(sip.NewResponseFromRequest(req, 200, "OK", nil))
-					return
-				}
-				tx.Respond(sip.NewResponseFromRequest(req, 481, "Call/Transaction Does Not Exist", nil))
-			})
-			sipRegistrar.SetOnBye(func(deviceID string, req *sip.Request, tx sip.ServerTransaction) {
-				callID := req.CallID().Value()
-				if w := pool.GetWorker(deviceID); w != nil && w.CSCallMgr != nil && w.CSCallMgr.HasCall(callID) {
-					w.CSCallMgr.HandleClientBye(callID)
-					return
-				}
-			})
-			pool.SetSIPRegistrar(sipRegistrar)
-			if err := sipRegistrar.Start(context.Background()); err != nil {
-				logger.Error("Registrar 启动失败", "err", err)
-			} else {
-				logger.Info("软电话 Registrar 已启动", "listen", sipgwCfg.SIP.Listen, "users", len(sipgwCfg.Users))
-			}
-		}
-	}
 
 	_ = pool.StartAll()
 
@@ -246,11 +154,6 @@ func main() {
 			notifyMgr.Close()
 		}
 
-		if sipRegistrar != nil {
-			if err := sipRegistrar.Stop(); err != nil {
-				logger.Error("关闭 Registrar 时出错", "err", err)
-			}
-		}
 
 		if err := pool.Shutdown(); err != nil {
 			logger.Error("关闭工作器池时出错", "err", err)
