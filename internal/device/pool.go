@@ -24,8 +24,8 @@ import (
 	"github.com/openvohive/openvohive/pkg/logger"
 	"github.com/openvohive/openvohive/pkg/smscodec"
 
-	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
-	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
+	qmimanager "github.com/openvohive/openvohive/pkg/quectel-qmi/manager"
+	"github.com/openvohive/openvohive/pkg/quectel-qmi/qmi"
 )
 
 // smsMode 短信工作模式枚举

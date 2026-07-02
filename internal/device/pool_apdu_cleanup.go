@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
-	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
 	"github.com/openvohive/openvohive/internal/backend"
 	qmipkg "github.com/openvohive/openvohive/internal/qmi"
 	"github.com/openvohive/openvohive/pkg/logger"
+	qmimanager "github.com/openvohive/openvohive/pkg/quectel-qmi/manager"
+	"github.com/openvohive/openvohive/pkg/quectel-qmi/qmi"
 )
 
 var startupSIMAuthLogicalChannelsToClose = []int{1, 2, 3, 4}

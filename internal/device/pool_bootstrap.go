@@ -18,7 +18,7 @@ import (
 	"github.com/openvohive/openvohive/pkg/logger"
 	"github.com/openvohive/openvohive/pkg/smscodec"
 
-	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
+	qmimanager "github.com/openvohive/openvohive/pkg/quectel-qmi/manager"
 )
 
 // deriveESIMTransport 从 device_backend 推导 eSIM 传输通道。

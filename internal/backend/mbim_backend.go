@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/iniwex5/quectel-qmi-go/pkg/manager"
 	"github.com/openvohive/openvohive/internal/modem"
 	"github.com/openvohive/openvohive/pkg/mbim"
+	"github.com/openvohive/openvohive/pkg/quectel-qmi/manager"
 )
 
 // MBIMBackend implements DeviceBackend over an MBIM modem.

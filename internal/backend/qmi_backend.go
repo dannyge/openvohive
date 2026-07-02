@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iniwex5/quectel-qmi-go/pkg/manager"
-	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
 	"github.com/openvohive/openvohive/internal/modem"
 	"github.com/openvohive/openvohive/pkg/logger"
+	"github.com/openvohive/openvohive/pkg/quectel-qmi/manager"
+	"github.com/openvohive/openvohive/pkg/quectel-qmi/qmi"
 	"github.com/openvohive/openvohive/pkg/smscodec"
 )
 

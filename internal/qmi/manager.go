@@ -16,10 +16,10 @@ import (
 	"github.com/openvohive/openvohive/internal/netprobe"
 	"github.com/openvohive/openvohive/pkg/logger"
 
-	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
-	"github.com/iniwex5/quectel-qmi-go/pkg/netcfg"
-	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
 	"github.com/miekg/dns"
+	qmimanager "github.com/openvohive/openvohive/pkg/quectel-qmi/manager"
+	"github.com/openvohive/openvohive/pkg/quectel-qmi/netcfg"
+	"github.com/openvohive/openvohive/pkg/quectel-qmi/qmi"
 )
 
 // 精选极速探测源

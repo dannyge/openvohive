@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
-	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
 	"github.com/openvohive/openvohive/pkg/mbim"
+	qmimanager "github.com/openvohive/openvohive/pkg/quectel-qmi/manager"
+	"github.com/openvohive/openvohive/pkg/quectel-qmi/qmi"
 )
 
 func isMBIMTransportFatal(err error) bool {
