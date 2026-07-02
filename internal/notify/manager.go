@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/device"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/internal/config"
+	"github.com/openvohive/openvohive/internal/device"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
 // Manager 统一通知管理器
@@ -74,30 +74,6 @@ func (m *Manager) initChannels(cfg *config.Config) error {
 		}
 	}
 
-	// 飞书渠道
-	if cfg.Feishu.Enabled {
-		fs, err := NewFeishuChannel(cfg.Feishu)
-		if err != nil {
-			logger.Error("初始化飞书渠道失败", "err", err)
-			return err
-		}
-		if fs != nil {
-			m.channels = append(m.channels, fs)
-		}
-	}
-
-	// QQ 渠道
-	if cfg.QQ.Enabled {
-		qq, err := NewQQChannel(cfg.QQ)
-		if err != nil {
-			logger.Error("初始化 QQ 渠道失败", "err", err)
-			return err
-		}
-		if qq != nil {
-			m.channels = append(m.channels, qq)
-		}
-	}
-
 	// Webhook 渠道
 	if cfg.Webhook.Enabled {
 		wh, err := NewWebhookChannel(cfg.Webhook)
@@ -110,19 +86,6 @@ func (m *Manager) initChannels(cfg *config.Config) error {
 		}
 	}
 
-	// Bark 渠道
-	if cfg.Bark.Enabled {
-		bk, err := NewBarkChannel(cfg.Bark)
-		if err != nil {
-			logger.Error("初始化 Bark 渠道失败", "err", err)
-			return err
-		}
-		if bk != nil {
-			m.channels = append(m.channels, bk)
-		}
-	}
-
-	// Email 渠道
 	if cfg.Email.Enabled {
 		em, err := NewEmailChannel(cfg.Email)
 		if err != nil {
@@ -131,18 +94,6 @@ func (m *Manager) initChannels(cfg *config.Config) error {
 		}
 		if em != nil {
 			m.channels = append(m.channels, em)
-		}
-	}
-
-	// Pushplus 渠道
-	if cfg.Pushplus.Enabled {
-		pp, err := NewPushplusChannel(cfg.Pushplus)
-		if err != nil {
-			logger.Error("初始化 Pushplus 渠道失败", "err", err)
-			return err
-		}
-		if pp != nil {
-			m.channels = append(m.channels, pp)
 		}
 	}
 
@@ -172,7 +123,6 @@ func (m *Manager) registerCommands() {
 		"sms":    m.handleCmdSMSInbox,
 		"esim":   m.handleCmdEsim,
 		"switch": m.handleCmdSwitch,
-		"vocall": m.handleCmdCall,
 	}
 
 	for _, ch := range m.channels {

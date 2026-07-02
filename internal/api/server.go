@@ -18,20 +18,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/data/repo"
-	"github.com/iniwex5/vohive/internal/db"
-	"github.com/iniwex5/vohive/internal/device"
-	"github.com/iniwex5/vohive/internal/global"
-	"github.com/iniwex5/vohive/internal/notify"
-	"github.com/iniwex5/vohive/internal/proxy/server"
-	proxytraffic "github.com/iniwex5/vohive/internal/proxy/traffic"
-	vwebsheet "github.com/iniwex5/vohive/internal/websheet"
-	"github.com/iniwex5/vohive/pkg/smscodec"
-	"github.com/iniwex5/vowifi-go/runtimehost/messaging"
-	"github.com/iniwex5/vowifi-go/runtimehost/voicehost"
+	"github.com/openvohive/openvohive/internal/config"
+	"github.com/openvohive/openvohive/internal/db"
+	"github.com/openvohive/openvohive/internal/device"
+	"github.com/openvohive/openvohive/internal/global"
+	"github.com/openvohive/openvohive/internal/notify"
+	"github.com/openvohive/openvohive/pkg/smscodec"
 
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/pkg/logger"
 	"github.com/spf13/viper"
 
 	"github.com/gin-gonic/gin"
@@ -43,22 +37,6 @@ type SMSWithDevice struct {
 	DeviceName string `json:"device_name"`
 }
 
-type smsInboxIMSIReader interface {
-	GetCachedIMSI() string
-	GetIMSI() string
-}
-
-func smsInboxIMSI(source smsInboxIMSIReader, liveRefresh bool) string {
-	if source == nil {
-		return ""
-	}
-	imsi := strings.TrimSpace(source.GetCachedIMSI())
-	if imsi != "" || !liveRefresh {
-		return imsi
-	}
-	return strings.TrimSpace(source.GetIMSI())
-}
-
 type loginAttempt struct {
 	Count   int
 	ResetAt time.Time
@@ -66,19 +44,13 @@ type loginAttempt struct {
 
 // Server 是 API 服务器的核心结构
 type Server struct {
-	cfg         config.ServerConfig // HTTP 服务器配置
-	fullCfg     *config.Config      // 完整配置引用
-	pool        *device.Pool        // 设备工作器池
-	auth        config.WebConfig    // Web 认证配置
-	fs          http.FileSystem     // 静态文件系统
-	configPath  string              // 配置文件路径
-	proxyMgr    *server.Manager     // 代理实例管理器
-	trafficRT   realtimeTrafficSubscriber
-	proxyRepo   repo.ProxyInstanceRepository
-	proxySyncMu sync.Mutex
-	voiceGW     *voicehost.Gateway
-	notifyMgr   *notify.Manager
-	websheets   *vwebsheet.Broker
+	cfg        config.ServerConfig // HTTP 服务器配置
+	fullCfg    *config.Config      // 完整配置引用
+	pool       *device.Pool        // 设备工作器池
+	auth       config.WebConfig    // Web 认证配置
+	fs         http.FileSystem     // 静态文件系统
+	configPath string              // 配置文件路径
+	notifyMgr  *notify.Manager
 
 	httpSrvMu sync.Mutex
 	httpSrv   *http.Server
@@ -89,13 +61,8 @@ type Server struct {
 	shutdownCh chan struct{}
 }
 
-type realtimeTrafficSubscriber interface {
-	Subscribe(ctx context.Context, deviceID string) (<-chan proxytraffic.RealtimeSnapshot, func())
-}
-
 // New 创建一个新的 API 服务器实例
-// proxyMgr 参数可为 nil，此时代理管理功能不可用
-func New(cfg *config.Config, pool *device.Pool, fs http.FileSystem, proxyMgr *server.Manager, voiceGW *voicehost.Gateway, notifyMgr *notify.Manager, configPath string) *Server {
+func New(cfg *config.Config, pool *device.Pool, fs http.FileSystem, notifyMgr *notify.Manager, configPath string) *Server {
 	if !cfg.Server.Debug {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -109,20 +76,12 @@ func New(cfg *config.Config, pool *device.Pool, fs http.FileSystem, proxyMgr *se
 		pool:          pool,
 		fs:            fs,
 		configPath:    configPath,
-		proxyMgr:      proxyMgr,
-		voiceGW:       voiceGW,
 		notifyMgr:     notifyMgr,
-		proxyRepo:     repo.NewDBRepo(),
-		websheets:     vwebsheet.New(vwebsheet.Config{BasePath: "/api/websheets"}),
 		loginAttempts: make(map[string]loginAttempt),
 		shutdownCh:    make(chan struct{}),
 	}
 
 	return s
-}
-
-func (s *Server) SetRealtimeTraffic(m *proxytraffic.RealtimeManager) {
-	s.trafficRT = m
 }
 
 // checkPassword 验证密码，支持 bcrypt 哈希和明文（向后兼容）
@@ -226,8 +185,6 @@ func (s *Server) newRouter() *gin.Engine {
 	api.POST("/auth/login", s.handleLogin)
 	api.POST("/rotateip", s.handleRotate)
 	api.OPTIONS("/logs/stream", s.handleLogStreamOptions)
-	api.POST("/system/uninstall", s.handleUninstall)
-	s.registerWebsheetRoutes(api)
 
 	// 以下接口需要鉴权
 	api.Use(s.authMiddleware())
@@ -242,8 +199,7 @@ func (s *Server) newRouter() *gin.Engine {
 		api.GET("/traffic/analysis", s.handleTrafficAnalysis)       // 流量分析统计
 
 		// ===== 短信 =====
-		api.POST("/sms/send", s.handleSendSMS)                    // 发送短信（自动选择 AT 或 VoWiFi）
-		api.GET("/sms/delivery/:message_id", s.handleSMSDelivery) // 查询发送投递状态
+		api.POST("/sms/send", s.handleSendSMS)                    // 发送短信
 		api.GET("/sms/contacts", s.handleGetSMSContacts)          // 获取短信联系人列表
 		api.GET("/sms/thread", s.handleGetSMSThread)              // 获取与某联系人的短信会话
 		api.DELETE("/sms/messages/:id", s.handleDeleteSMSMessage) // 删除单条历史短信
@@ -253,12 +209,9 @@ func (s *Server) newRouter() *gin.Engine {
 		api.GET("/settings/notifications", s.handleGetNotificationSettings)    // 获取通知设置
 		api.PUT("/settings/notifications", s.handleUpdateNotificationSettings) // 更新通知设置
 		api.POST("/settings/notifications/webhook/test", s.handleTestWebhookNotification)
-		api.POST("/settings/notifications/bark/test", s.handleTestBarkNotification)
 		api.POST("/settings/notifications/email/test", s.handleTestEmailNotification)
 		api.POST("/settings/password", s.handleChangePassword) // 修改登录密码
 		api.GET("/system/info", s.handleSystemInfo)            // 获取系统运行与版本信息
-		api.GET("/system/update/check", s.handleCheckUpdate)   // 检查系统更新
-		api.POST("/system/update/apply", s.handleApplyUpdate)  // 应用系统更新
 
 		api.GET("/devices", s.handleDeviceMgmtList)                                            // 获取设备列表（管理页用）
 		api.POST("/devices", s.handleDeviceMgmtAddDevice)                                      // 添加新设备
@@ -288,25 +241,6 @@ func (s *Server) newRouter() *gin.Engine {
 		api.GET("/devices/:device_id/operator_selection", s.handleDeviceMgmtGetOperatorSelection)           // 获取当前选网配置
 		api.POST("/devices/:device_id/operator_selection", s.handleDeviceMgmtSetOperatorSelection)          // 锁定运营商或恢复自动
 
-		// ===== 代理管理 =====
-		api.GET("/proxy-instances/overview", s.handleProxyOverview)                             // 获取代理实例概览
-		api.PUT("/proxy-instances/config", s.handleProxyUpdateConfig)                           // 保存代理配置
-		api.GET("/proxy-instances/:instance_id", s.handleProxyInstanceGet)                      // 获取单个代理实例
-		api.POST("/proxy-instances/:instance_id/actions/start", s.handleProxyInstanceStart)     // 启动代理实例
-		api.POST("/proxy-instances/:instance_id/actions/stop", s.handleProxyInstanceStop)       // 停止代理实例
-		api.POST("/proxy-instances/:instance_id/actions/restart", s.handleProxyInstanceRestart) // 重启代理实例
-
-		// ===== 前置代理管理 =====
-		api.GET("/upstream-proxies", s.handleListUpstreamProxies)                                         // 列出所有前置代理
-		api.POST("/upstream-proxies", s.handleCreateUpstreamProxy)                                        // 新增前置代理
-		api.PUT("/upstream-proxies/:proxy_id", s.handleUpdateUpstreamProxy)                               // 更新前置代理
-		api.DELETE("/upstream-proxies/:proxy_id", s.handleDeleteUpstreamProxy)                            // 删除前置代理
-		api.POST("/upstream-proxies/:proxy_id/actions/probe", s.handleProbeUpstreamProxy)                 // 探测前置代理
-		api.GET("/upstream-proxy-countries", s.handleListUpstreamProxyCountries)                          // 列出可配置国家
-		api.GET("/upstream-proxy-country-rules", s.handleListUpstreamProxyCountryRules)                   // 列出国家规则
-		api.PUT("/upstream-proxy-country-rules/:country_code", s.handleUpsertUpstreamProxyCountryRule)    // 保存国家规则
-		api.DELETE("/upstream-proxy-country-rules/:country_code", s.handleDeleteUpstreamProxyCountryRule) // 删除国家规则
-
 		// ===== eSIM =====
 		api.GET("/devices/:device_id/esim", s.handleEsimGetOverview) // 获取 eSIM 总览
 		api.GET("/devices/:device_id/esim/profiles", s.handleEsimListProfiles)
@@ -320,9 +254,6 @@ func (s *Server) newRouter() *gin.Engine {
 		api.DELETE("/devices/:device_id/esim/profiles/:iccid", s.handleEsimDeleteProfile)                         // 删除 eSIM profile
 
 		// ===== VoWiFi =====
-		api.PATCH("/devices/:device_id/vowifi", s.handleDeviceVoWiFiPatch)                          // 启用/禁用 VoWiFi
-		api.POST("/devices/:device_id/vowifi/actions/reconnect", s.handleDeviceMgmtReconnectVoWiFi) // 重连 VoWiFi
-		api.POST("/devices/:device_id/vowifi/e911/websheet", s.handleDeviceE911Websheet)            // 打开 E911 设置 websheet
 		// api.POST("/devices/:id/simulate-call", s.handleSimulateCall)   // 模拟呼叫
 
 		// ===== 日志 =====
@@ -408,21 +339,17 @@ func (s *Server) handleListDevices(c *gin.Context) {
 	}
 
 	type DeviceStatus struct {
-		ID               string            `json:"id"`
-		Name             string            `json:"name"`
-		Interface        string            `json:"interface"`
-		ProxyPort        int               `json:"proxy_port"`
-		PublicIP         string            `json:"public_ip"`
-		PublicIPv6       string            `json:"public_ipv6,omitempty"`
-		Healthy          bool              `json:"healthy"`
-		Operator         string            `json:"operator"`
-		SignalDBM        int               `json:"signal_dbm"`
-		NetworkMode      string            `json:"network_mode"`
-		NetworkDuplex    string            `json:"network_duplex"`
-		VoWiFiActive     bool              `json:"vowifi_active"`
-		VoWiFiRuntime    *voWiFiRuntimeDTO `json:"vowifi_runtime,omitempty"`
-		Traffic          map[string]string `json:"traffic,omitempty"`
-		NetworkConnected bool              `json:"network_connected"`
+		ID               string `json:"id"`
+		Name             string `json:"name"`
+		Interface        string `json:"interface"`
+		PublicIP         string `json:"public_ip"`
+		PublicIPv6       string `json:"public_ipv6,omitempty"`
+		Healthy          bool   `json:"healthy"`
+		Operator         string `json:"operator"`
+		SignalDBM        int    `json:"signal_dbm"`
+		NetworkMode      string `json:"network_mode"`
+		NetworkDuplex    string `json:"network_duplex"`
+		NetworkConnected bool   `json:"network_connected"`
 	}
 
 	list := make([]DeviceStatus, 0, len(workers))
@@ -436,7 +363,6 @@ func (s *Server) handleListDevices(c *gin.Context) {
 			ID:               cfg.ID,
 			Name:             cfg.Name,
 			Interface:        cfg.Interface,
-			ProxyPort:        cfg.ProxyPort,
 			PublicIP:         w.GetCachedIP(),
 			PublicIPv6:       w.GetCachedIPv6(),
 			Healthy:          w.GetCachedHealthy(), // 健康状态读缓存
@@ -444,13 +370,7 @@ func (s *Server) handleListDevices(c *gin.Context) {
 			SignalDBM:        status.SignalDBM,
 			NetworkMode:      status.NetworkMode,
 			NetworkDuplex:    status.NetworkDuplex,
-			VoWiFiActive:     s.pool.IsVoWiFiActive(w.ID), // 逐个设备判断 VoWiFi 状态，支持多设备
-			VoWiFiRuntime:    s.getVoWiFiRuntimeDTO(w.ID),
 			NetworkConnected: w.NetworkConnected(),
-		}
-		// 添加格式化流量
-		if w.Proxy != nil {
-			item.Traffic = w.Proxy.GetFormattedStats()
 		}
 		list = append(list, item)
 	}
@@ -654,7 +574,7 @@ func readLastLines(path string, maxLines int, maxBytes int64) ([]string, error) 
 	}
 
 	const blockSize int64 = 32 * 1024
-	var offset = size
+	offset := size
 	var readBytes int64
 	var newlines int
 	chunks := make([][]byte, 0, 8)
@@ -741,90 +661,6 @@ func parseLogLine(line string) logger.LogEntry {
 	}
 
 	return entry
-}
-
-func (s *Server) handleDeviceDetail(c *gin.Context) {
-	deviceID := deviceIDParam(c)
-	worker := s.pool.GetWorker(deviceID)
-	if worker == nil {
-		c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备未找到"})
-		return
-	}
-
-	c.JSON(http.StatusOK, worker.GetStats())
-}
-
-func (s *Server) handleDeviceTraffic(c *gin.Context) {
-	deviceID := deviceIDParam(c)
-	worker := s.pool.GetWorker(deviceID)
-	if worker == nil {
-		c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备未找到"})
-		return
-	}
-	iface := worker.Config.Interface
-	tag := deviceID + "@" + iface
-	ps, rx, tx, _ := db.GetLatestMinuteDeltas("iface", tag)
-	var ifaceObj any = nil
-	if iface != "" {
-		ifaceObj = gin.H{
-			"interface":    iface,
-			"period_start": ps,
-			"rx_bytes":     rx,
-			"tx_bytes":     tx,
-			"rx":           server.FormatBytes(rx),
-			"tx":           server.FormatBytes(tx),
-			"rate":         server.FormatBytes(int64(float64(rx+tx)/60.0)) + "/s",
-		}
-	}
-
-	type instTraffic struct {
-		ID          string    `json:"id"`
-		Name        string    `json:"name"`
-		Mode        string    `json:"mode"`
-		PeriodStart time.Time `json:"period_start"`
-		RxBytes     int64     `json:"rx_bytes"`
-		TxBytes     int64     `json:"tx_bytes"`
-		Rx          string    `json:"rx"`
-		Tx          string    `json:"tx"`
-		Rate        string    `json:"rate"`
-	}
-	ctx := c.Request.Context()
-	instances, err := s.proxyRepo.List(ctx)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "加载代理实例失败: " + err.Error()})
-		return
-	}
-	var insts []instTraffic
-	for _, inst := range instances {
-		if inst.DeviceID != deviceID {
-			continue
-		}
-		mode := strings.ToLower(strings.TrimSpace(inst.Mode))
-		if mode == "" {
-			mode = "socks5"
-		}
-		ips, irx, itx, _ := db.GetLatestMinuteDeltas("proxy_instance", inst.ID)
-		if irx == 0 && itx == 0 {
-			continue
-		}
-		insts = append(insts, instTraffic{
-			ID:          inst.ID,
-			Name:        inst.Name,
-			Mode:        mode,
-			PeriodStart: ips,
-			RxBytes:     irx,
-			TxBytes:     itx,
-			Rx:          server.FormatBytes(irx),
-			Tx:          server.FormatBytes(itx),
-			Rate:        server.FormatBytes(int64(float64(irx+itx)/60.0)) + "/s",
-		})
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"device_id":       deviceID,
-		"iface":           ifaceObj,
-		"proxy_instances": insts,
-	})
 }
 
 func (s *Server) handleRotate(c *gin.Context) {
@@ -917,10 +753,6 @@ func (s *Server) handleDeviceMgmtStartNetwork(c *gin.Context) {
 	nc := worker.NetworkController()
 	if nc == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "当前设备不支持网络控制"})
-		return
-	}
-	if s.pool.IsVoWiFiActive(deviceID) {
-		c.JSON(http.StatusConflict, gin.H{"status": "error", "message": "VoWiFi 运行中，无法启动数据网络"})
 		return
 	}
 	if err := worker.StartNetwork(); err != nil {
@@ -1017,60 +849,6 @@ func (s *Server) handleHealth(c *gin.Context) {
 	}
 }
 
-func (s *Server) handleStats(c *gin.Context) {
-	workers := s.pool.GetAllWorkers()
-
-	var totalSent, totalReceived, totalConns int64
-
-	tagByID := map[string]string{}
-	tags := make([]string, 0, len(workers))
-	for _, w := range workers {
-		if w == nil {
-			continue
-		}
-		iface := w.Config.Interface
-		if iface == "" {
-			continue
-		}
-		tag := w.ID + "@" + iface
-		tagByID[w.ID] = tag
-		tags = append(tags, tag)
-	}
-
-	byTag, _ := db.GetLatestMinuteDeltasBatch("iface", tags)
-
-	deviceStats := make(map[string]map[string]int64)
-	for _, w := range workers {
-		if w == nil {
-			continue
-		}
-		tag := tagByID[w.ID]
-		if tag == "" {
-			continue
-		}
-		d := byTag[tag]
-		stats := map[string]int64{
-			"bytes_sent":     d.TxBytes,
-			"bytes_received": d.RxBytes,
-			"connections":    0,
-		}
-		deviceStats[w.ID] = stats
-		totalSent += d.TxBytes
-		totalReceived += d.RxBytes
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"total": gin.H{
-			"bytes_sent":         totalSent,
-			"bytes_received":     totalReceived,
-			"connections":        totalConns,
-			"sent_formatted":     server.FormatBytes(totalSent),
-			"received_formatted": server.FormatBytes(totalReceived),
-		},
-		"devices": deviceStats,
-	})
-}
-
 func (s *Server) handleSendSMS(c *gin.Context) {
 	type SendSMSRequest struct {
 		DeviceID string `json:"device_id"`
@@ -1133,30 +911,7 @@ func (s *Server) handleSendSMS(c *gin.Context) {
 	partsTotal := 1
 	deliveryState := "acked"
 
-	if s.pool.IsVoWiFiActive(deviceID) {
-		// VoWiFi 模式下使用 IMS Core 发送；短信历史由宿主侧 runtime event / failure recorder 入库。
-		outcome, err := s.pool.SendVoWiFiSMSWithOptions(c.Request.Context(), deviceID, req.Phone, req.Message, sendOpts)
-		if outcome.PartsTotal > 0 {
-			partsTotal = outcome.PartsTotal
-		}
-		if strings.TrimSpace(outcome.DeliveryState) != "" {
-			deliveryState = strings.TrimSpace(outcome.DeliveryState)
-		}
-		messageID = strings.TrimSpace(outcome.MessageID)
-		if err != nil {
-			_ = device.RecordVoWiFiSMSSendFailure(s.pool, deviceID, req.Phone, req.Message, time.Now())
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status":         "error",
-				"message":        "VoWiFi 短信发送失败: " + err.Error(),
-				"device":         deviceID,
-				"phone":          req.Phone,
-				"message_id":     messageID,
-				"parts_total":    partsTotal,
-				"delivery_state": deliveryState,
-			})
-			return
-		}
-	} else {
+	{ // always use CS path
 		// 普通模式使用 AT 发送
 		if err := worker.SendSMSWithOptions(req.Phone, req.Message, sendOpts); err != nil {
 			// 发送失败，入库记录（status=3）
@@ -1188,232 +943,7 @@ func (s *Server) handleSendSMS(c *gin.Context) {
 	})
 }
 
-func (s *Server) handleSMSDelivery(c *gin.Context) {
-	messageID := strings.TrimSpace(c.Param("message_id"))
-	if messageID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "message_id 不能为空"})
-		return
-	}
-	if s.pool == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "message": "服务未就绪"})
-		return
-	}
-	services := s.pool.GetAllVoWiFiApps()
-	for _, svc := range services {
-		if svc == nil {
-			continue
-		}
-		status, err := svc.GetSMSDeliveryStatus(messageID)
-		if err != nil {
-			continue
-		}
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "delivery": status})
-		return
-	}
-	c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "未找到对应短信投递记录"})
-}
-
-func (s *Server) handleVoWiFiSMSStatus(c *gin.Context) {
-	if s.pool == nil {
-		c.JSON(http.StatusOK, gin.H{"enabled": false, "status": "no_pool"})
-		return
-	}
-	svc := s.pool.GetVoWiFiApp()
-	if svc == nil {
-		c.JSON(http.StatusOK, gin.H{"enabled": false, "status": "not_running"})
-		return
-	}
-	c.JSON(http.StatusOK, svc.Status())
-}
-
-func (s *Server) handleVoWiFiSendSMS(c *gin.Context) {
-	type SendSMSRequest struct {
-		To       string `json:"to" binding:"required"`
-		Text     string `json:"text" binding:"required"`
-		Encoding string `json:"encoding"`
-	}
-
-	var req SendSMSRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "参数错误: " + err.Error()})
-		return
-	}
-
-	if s.pool == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "message": "服务未就绪"})
-		return
-	}
-	encoding, err := smscodec.NormalizeSMSEncoding(req.Encoding)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "短信编码参数错误: " + err.Error()})
-		return
-	}
-	svc := s.pool.GetVoWiFiApp()
-	if svc == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "message": "IMS Core 未启动"})
-		return
-	}
-
-	outcome, err := svc.SendSMSWithOptions(c.Request.Context(), req.To, req.Text, messaging.SendOptions{Encoding: string(encoding)})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"status":         "error",
-			"message":        "发送失败: " + err.Error(),
-			"message_id":     strings.TrimSpace(outcome.MessageID),
-			"parts_total":    outcome.PartsTotal,
-			"delivery_state": strings.TrimSpace(outcome.DeliveryState),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":         "ok",
-		"message":        "IMS 短信发送成功",
-		"message_id":     strings.TrimSpace(outcome.MessageID),
-		"parts_total":    outcome.PartsTotal,
-		"delivery_state": strings.TrimSpace(outcome.DeliveryState),
-	})
-}
-
-// handleVoWiFiEnable 为指定设备启用 VoWiFi
-func (s *Server) handleVoWiFiEnable(c *gin.Context) {
-	deviceID := deviceIDParam(c)
-	if deviceID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "请指定设备 ID"})
-		return
-	}
-
-	if s.pool == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "message": "服务未就绪"})
-		return
-	}
-
-	if err := s.pool.EnableVoWiFi(deviceID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"status":  "error",
-			"message": "VoWiFi 启用失败: " + err.Error(),
-			"device":  deviceID,
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "ok",
-		"message": "VoWiFi 已启用，设备已进入飞行模式",
-		"device":  deviceID,
-	})
-}
-
-// handleVoWiFiDisable 禁用 VoWiFi，保留当前射频/网络状态
-func (s *Server) handleVoWiFiDisable(c *gin.Context) {
-	deviceID := deviceIDParam(c)
-
-	if s.pool == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "message": "服务未就绪"})
-		return
-	}
-
-	if err := s.pool.DisableVoWiFi(deviceID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"status":  "error",
-			"message": "VoWiFi 禁用失败: " + err.Error(),
-			"device":  deviceID,
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "ok",
-		"message": "VoWiFi 已禁用",
-		"device":  deviceID,
-	})
-}
-
-// handleSimulateCall 处理无头模拟呼叫请求
-func (s *Server) handleSimulateCall(c *gin.Context) {
-	deviceID := deviceIDParam(c)
-	if s.voiceGW == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "语音网关未启用"})
-		return
-	}
-
-	var req voicehost.SimulateCallRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求参数：" + err.Error()})
-		return
-	}
-
-	result, err := s.voiceGW.SimulateCall(c.Request.Context(), deviceID, req)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   err.Error(),
-			"success": false,
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, result)
-}
-
-// handleVoWiFiStatus 返回 VoWiFi 当前状态
-func (s *Server) handleVoWiFiStatus(c *gin.Context) {
-	if s.pool == nil {
-		c.JSON(http.StatusOK, gin.H{
-			"enabled":   false,
-			"device_id": "",
-			"status":    "服务未就绪",
-		})
-		return
-	}
-
-	enabled, deviceID, status := s.pool.GetVoWiFiStatus()
-	c.JSON(http.StatusOK, gin.H{
-		"enabled":   enabled,
-		"device_id": deviceID,
-		"status":    status,
-	})
-}
-
 // handleStatus 返回所有设备的状态概览
-func (s *Server) handleStatus(c *gin.Context) {
-	workers := s.pool.GetAllWorkers()
-
-	type DeviceStatusSummary struct {
-		ID         string `json:"id"`
-		Name       string `json:"name"`
-		IMEI       string `json:"imei"`
-		ICCID      string `json:"iccid"`
-		Operator   string `json:"operator"`
-		SignalDBM  int    `json:"signal_dbm"`
-		RegStatus  string `json:"reg_status"`
-		PublicIP   string `json:"public_ip"`
-		PublicIPv6 string `json:"public_ipv6,omitempty"`
-		ProxyPort  int    `json:"proxy_port"`
-		Healthy    bool   `json:"healthy"`
-	}
-
-	list := make([]DeviceStatusSummary, 0, len(workers))
-	for _, w := range workers {
-		status := w.GetCachedDeviceStatus() // 设备摘要列表读缓存，0 IPC
-		list = append(list, DeviceStatusSummary{
-			ID:         w.ID,
-			Name:       w.Config.Name,
-			IMEI:       status.IMEI,
-			ICCID:      status.ICCID,
-			Operator:   status.Operator,
-			SignalDBM:  status.SignalDBM,
-			RegStatus:  status.RegStatusText,
-			PublicIP:   w.GetCachedIP(),
-			PublicIPv6: w.GetCachedIPv6(),
-			ProxyPort:  w.Config.ProxyPort,
-			Healthy:    w.GetCachedHealthy(), // 健康状态读缓存
-		})
-	}
-
-	c.JSON(http.StatusOK, gin.H{"devices": list})
-}
-
-// handleStatusDetail 返回单个设备的详细状态
 func (s *Server) handleStatusDetail(c *gin.Context) {
 	deviceID := deviceIDParam(c)
 	worker := s.pool.GetWorker(deviceID)
@@ -1459,134 +989,11 @@ func (s *Server) handleStatusDetail(c *gin.Context) {
 		"public_ip":         worker.GetCachedIP(),
 		"public_ipv6":       worker.GetCachedIPv6(),
 		"interface":         worker.Config.Interface,
-		"proxy_port":        worker.Config.ProxyPort,
 		"healthy":           worker.IsDeviceHealthy(),
 		"network_connected": worker.NetworkConnected(),
 	}
 
-	if worker.Proxy != nil {
-		response["traffic"] = worker.Proxy.GetFormattedStats()
-	}
-
-	vowifi := gin.H{
-		"active": s.pool.IsVoWiFiActive(worker.ID),
-	}
-	if obs := s.pool.GetVoWiFiObs(worker.ID); obs != nil {
-		for k, v := range obs {
-			vowifi[k] = v
-		}
-	} else {
-		if app := s.pool.GetVoWiFiAppForDevice(worker.ID); app != nil {
-			status := app.Status()
-			vowifi["imscore"] = status
-			vowifi["smsip"] = status
-		}
-	}
-	if s.voiceGW != nil {
-		vowifi["voice"] = s.voiceGW.DeviceStatus(worker.ID)
-	}
-	response["vowifi"] = vowifi
-
 	c.JSON(http.StatusOK, response)
-}
-
-func (s *Server) handleGetSMSInbox(c *gin.Context) {
-	deviceID := c.Query("device_id")
-	limitStr := c.DefaultQuery("limit", "20")
-	var limit int
-	fmt.Sscanf(limitStr, "%d", &limit)
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
-	// 如果未指定设备 ID 且只有一个设备，默认使用该设备
-	// 如果未指定设备 ID，则返回全局最近短信
-	if deviceID == "" || deviceID == "all" {
-		smsList, err := db.GetRecentSMS(limit)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "查询数据库失败: " + err.Error()})
-			return
-		}
-
-		cfgByID := map[string]config.DeviceConfig{}
-		{
-			managed := config.ListDevices()
-			for _, d := range managed {
-				cfgByID[d.ID] = d
-			}
-		}
-
-		iccidToName := map[string]string{}
-		enrichedList := make([]SMSWithDevice, 0, len(smsList))
-		for _, w := range s.pool.GetAllWorkers() {
-			if w == nil || w.Modem == nil {
-				continue
-			}
-			iccid := w.CurrentICCID()
-			if strings.TrimSpace(iccid) == "" {
-				continue
-			}
-			name := ""
-			if v, ok := cfgByID[w.ID]; ok {
-				name = v.Name
-			} else {
-				name = w.Config.Name
-			}
-			if name == "" {
-				name = w.ID
-			}
-			iccidToName[iccid] = name
-		}
-
-		for _, sms := range smsList {
-			devName := iccidToName[sms.ICCID]
-			enrichedList = append(enrichedList, SMSWithDevice{
-				SMS:        sms,
-				DeviceName: devName,
-			})
-		}
-
-		c.JSON(http.StatusOK, enrichedList)
-		return
-	}
-
-	worker := s.pool.GetWorker(deviceID)
-	if worker == nil {
-		c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备未找到: " + deviceID})
-		return
-	}
-
-	iccid := worker.CurrentICCID()
-	logger.Debug("查询指定设备短信", "device_id", deviceID, "iccid", iccid)
-	if iccid == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "该设备未识别到 SIM 卡 ICCID"})
-		return
-	}
-
-	smsList, err := db.GetSMSByICCID(iccid, limit)
-	if err != nil {
-		logger.Error("查询数据库短信失败", "err", err, "iccid", iccid)
-		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "查询数据库失败: " + err.Error()})
-		return
-	}
-
-	enrichedList := make([]SMSWithDevice, 0, len(smsList))
-	devName := worker.Config.Name
-	if devName == "" {
-		devName = worker.ID
-	}
-
-	for _, sms := range smsList {
-		enrichedList = append(enrichedList, SMSWithDevice{
-			SMS:        sms,
-			DeviceName: devName,
-		})
-	}
-
-	c.JSON(http.StatusOK, enrichedList)
 }
 
 type SMSContactWithDevice struct {
@@ -1596,29 +1003,6 @@ type SMSContactWithDevice struct {
 	LocalPhone string `json:"local_phone"` // 本机号码（收件人手机号），来自订阅手机号
 }
 
-func (s *Server) resolveSMSIMSI(deviceID, imsi string) (string, int, string) {
-	deviceID = strings.TrimSpace(deviceID)
-	imsi = strings.TrimSpace(imsi)
-	if deviceID == "" || deviceID == "all" {
-		if imsi == "" {
-			return "", http.StatusBadRequest, "缺少 imsi 参数（device_id=all 时必须指定）"
-		}
-		return imsi, 0, ""
-	}
-
-	worker := s.pool.GetWorker(deviceID)
-	if worker == nil {
-		return "", http.StatusNotFound, "设备未找到: " + deviceID
-	}
-	imsi = strings.TrimSpace(worker.GetCachedIMSI())
-	if imsi == "" {
-		return "", http.StatusBadRequest, "该设备未识别到 SIM 卡 IMSI"
-	}
-	return imsi, 0, ""
-}
-
-// resolveSMSICCID 将 device_id 或 imsi 查询参数解析为 ICCID，供 ICCID 维度的 SMS 查询使用。
-// 对于 ?imsi= 路径，通过 sim_cards 映射转换为 ICCID（无映射时使用 "imsi:" 前缀合成键）。
 func (s *Server) resolveSMSICCID(deviceID, imsi string) (string, int, string) {
 	deviceID = strings.TrimSpace(deviceID)
 	imsi = strings.TrimSpace(imsi)
@@ -2211,4 +1595,22 @@ func (s *Server) handleSystemInfo(c *gin.Context) {
 		"config":     viper.ConfigFileUsed(),
 		"docs":       currentAPIDocsLinks(),
 	})
+}
+
+func formatBytes(n int64) string {
+	if n < 0 {
+		return "0 B"
+	}
+	const units = "KMGTPE"
+	if n < 1024 {
+		return fmt.Sprintf("%d B", n)
+	}
+	val := float64(n)
+	for i := 0; i < len(units); i++ {
+		val /= 1024
+		if val < 1024 {
+			return fmt.Sprintf("%.1f %ciB", val, units[i])
+		}
+	}
+	return fmt.Sprintf("%.1f EiB", val)
 }

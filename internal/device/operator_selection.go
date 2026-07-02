@@ -8,19 +8,20 @@ import (
 	"time"
 
 	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
-	"github.com/iniwex5/vohive/internal/backend"
+	"github.com/openvohive/openvohive/internal/backend"
 )
 
 var (
 	ErrWorkerNil                     = errors.New("worker_nil")
 	ErrBackendNotAvailable           = errors.New("backend_not_available")
 	ErrOperatorSelectionNotSupported = errors.New("operator_selection_not_supported")
-	ErrVoWiFiActive                  = errors.New("vowifi_active")
 	ErrESIMSwitching                 = errors.New("esim_profile_switching")
 )
 
-const operatorScanTimeout = 120 * time.Second
-const operatorScanRetryableMessage = "扫描超时或模组忙，请稍后重试"
+const (
+	operatorScanTimeout          = 120 * time.Second
+	operatorScanRetryableMessage = "扫描超时或模组忙，请稍后重试"
+)
 
 type OperatorScanStatus string
 
@@ -257,9 +258,6 @@ func (w *Worker) SetOperatorSelection(ctx context.Context, req backend.SetOperat
 	}
 
 	if w.Pool != nil {
-		if w.Pool.IsVoWiFiActive(w.ID) {
-			return backend.OperatorSelection{}, ErrVoWiFiActive
-		}
 		if w.Pool.IsESIMSwitching(w.ID) {
 			return backend.OperatorSelection{}, ErrESIMSwitching
 		}

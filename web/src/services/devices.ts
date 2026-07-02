@@ -1,6 +1,6 @@
 import { api } from '../stores/auth'
 import { callService } from './http'
-import type { CarrierWebsheetInfo, DeviceConfigDTO, DiscoveredDevice, EsimNotificationItem, EsimOverviewResponse, EsimSpaceDelta } from '../types/api'
+import type { DeviceConfigDTO, DiscoveredDevice, EsimNotificationItem, EsimOverviewResponse, EsimSpaceDelta } from '../types/api'
 import type { DeviceDetailVM, DeviceListVM } from '../types/view-model'
 import axios from 'axios'
 
@@ -106,7 +106,6 @@ export const devicesService = {
       const res = await api.get('/devices', { signal })
       return {
         devices: (res.data?.devices || []) as DeviceListVM[],
-        deviceLimit: (typeof res.data?.device_limit === 'number' ? res.data.device_limit : 0) as number,
       }
     })
   },
@@ -174,30 +173,6 @@ export const devicesService = {
       }
     })
   },
-  enableVoWiFi(id: string) {
-    return callService(async () => {
-      await api.patch(`/devices/${id}/vowifi`, { enabled: true })
-      return true
-    })
-  },
-  disableVoWiFi(id: string) {
-    return callService(async () => {
-      await api.patch(`/devices/${id}/vowifi`, { enabled: false })
-      return true
-    })
-  },
-  reconnectVoWiFi(id: string) {
-    return callService(async () => {
-      await api.post(`/devices/${id}/vowifi/actions/reconnect`)
-      return true
-    })
-  },
-  startE911Websheet(id: string) {
-    return callService(async () => {
-      const res = await api.post<CarrierWebsheetInfo>(`/devices/${id}/vowifi/e911/websheet`)
-      return res.data
-    })
-  },
   rebootModem(id: string) {
     return callService(async () => {
       await api.post(`/devices/${id}/actions/reboot`)
@@ -246,8 +221,6 @@ export const devicesService = {
         ip_version: _ipVersion,
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         network_enabled: _networkEnabled,
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        vowifi_enabled: _voWiFiEnabled,
         ...deviceConfig
       } = config
       const res = await api.post<AddDeviceResponse>('/devices', { config: deviceConfig })

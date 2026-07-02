@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/modem"
+	"github.com/openvohive/openvohive/internal/backend"
+	"github.com/openvohive/openvohive/internal/modem"
 )
 
 func newWorkerBackendStrict(deviceID, backendMode, controlDevice string, m *modem.Manager, source backend.QMISource, mbimSource backend.MBIMSource) (backend.DeviceBackend, error) {
@@ -22,16 +22,6 @@ func newWorkerBackendStrict(deviceID, backendMode, controlDevice string, m *mode
 
 func backendUsesATRuntime(mode string) bool {
 	return backend.NormalizeBackendMode(mode) == backend.BackendAT
-}
-
-func workerUsesATRuntime(w *Worker) bool {
-	if w == nil {
-		return false
-	}
-	if w.Backend != nil {
-		return w.Backend.Mode() == backend.BackendAT
-	}
-	return backendUsesATRuntime(resolvedBackendMode(w.Config))
 }
 
 func workerBackendMode(w *Worker) string {

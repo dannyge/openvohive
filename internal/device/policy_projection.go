@@ -2,32 +2,25 @@ package device
 
 import (
 	"strings"
-	"time"
 
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/cardpolicy"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/internal/backend"
+	"github.com/openvohive/openvohive/internal/cardpolicy"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
 // applyPolicyToWorker 把卡策略投影进 worker.Config 的运行时有效字段。
-// 不在此触发 re-apply，仅做纯投影，便于单测。
 func applyPolicyToWorker(w *Worker, p cardpolicy.Policy) {
 	if w == nil {
 		return
 	}
 	w.Config.NetworkEnabled = p.NetworkEnabled
-	w.Config.VoWiFiEnabled = p.VoWiFiEnabled
 	w.Config.AirplaneEnabled = p.AirplaneEnabled
-	if p.VoWiFiEnabled {
-		w.Config.AirplaneEnabled = true
-	}
 	w.Config.IPVersion = strings.TrimSpace(p.IPVersion)
 	if w.Config.IPVersion == "" {
 		w.Config.IPVersion = "v4"
 	}
 	w.Config.APN = strings.TrimSpace(p.APN)
 	w.Config.SMSEnabled = true // SMS 恒开
-	w.restoreNetworkAfterVoWiFi = p.NetworkEnabled
 }
 
 type policyApplyResult struct {
@@ -53,37 +46,21 @@ func (p *Pool) resolveAndApplyPolicy(worker *Worker, reason string) policyApplyR
 	}
 	applyPolicyToWorker(worker, pol)
 	logger.Info("已投影卡策略", "device", worker.ID, "iccid", iccid,
-		"network", pol.NetworkEnabled, "vowifi", pol.VoWiFiEnabled,
-		"airplane", worker.Config.AirplaneEnabled, "reason", reason)
+		"network", pol.NetworkEnabled, "airplane", worker.Config.AirplaneEnabled, "reason", reason)
 
-	// 三态分支：VoWiFi / 纯飞行 / 在线(含连网)。射频模式按策略真正切换，
-	// 补齐此前“airplane 字段被投影但从不执行”的缺口。
 	switch {
-	case pol.VoWiFiEnabled:
-		// 原有路径：网络偏好按 false 走(停数据网)，射频由 VoWiFi 恢复流程切 RFOff。
-		if err := p.applyNetworkPreference(worker); err != nil {
-			logger.Warn("应用网络偏好失败", "device", worker.ID, "err", err)
-		}
 	case pol.AirplaneEnabled:
-		// 纯飞行：停数据网 + 切 RFOff，不做注册偏好/重连。
 		p.enterAirplaneModeFromPolicy(worker, reason)
 	default:
-		// 在线(待机或连网)：若当前在飞行先退出飞行，再按 network 偏好。
 		p.exitAirplaneModeIfNeeded(worker, reason)
 		if err := p.applyNetworkPreference(worker); err != nil {
 			logger.Warn("应用网络偏好失败", "device", worker.ID, "err", err)
 		}
 	}
-	if pol.VoWiFiEnabled {
-		p.scheduleDesiredVoWiFiRecover(worker.ID, reason, time.Now())
-	} else {
-		p.clearDesiredVoWiFiRecoverState(worker.ID)
-	}
 	return policyApplyResult{Applied: true, ICCID: iccid, Reason: reason}
 }
 
 // enterAirplaneModeFromPolicy 按策略进入纯飞行：先断数据网，再把射频切到 RFOff。
-// 已处于飞行则跳过。设备不支持射频控制时仅告警。
 func (p *Pool) enterAirplaneModeFromPolicy(w *Worker, reason string) {
 	if w == nil {
 		return
@@ -139,7 +116,7 @@ func (p *Pool) CurrentICCIDForDevice(deviceID string) string {
 	return w.CurrentICCID()
 }
 
-// SetPolicyResolver 注入卡策略解析器（cmd/vohive 启动时调用）。
+// SetPolicyResolver 注入卡策略解析器。
 func (p *Pool) SetPolicyResolver(r cardpolicy.Resolver) {
 	if p == nil {
 		return

@@ -17,11 +17,9 @@ const props = defineProps<{
   trafficSpeedTx: string
   trafficMinuteRx: string
   trafficMinuteTx: string
-  e911Starting: boolean
 }>()
 
 const emit = defineEmits<{
-  'setup-e911': []
   'refresh': []
 }>()
 
@@ -44,43 +42,7 @@ const trafficTxDisplay = computed(() => props.trafficMinuteTx || trafficDisplay(
 const trafficDownloadRateDisplay = computed(() => props.trafficSpeedRx || trafficDisplay(props.device?.traffic?.rate) || '--')
 const trafficUploadRateDisplay = computed(() => props.trafficSpeedTx || trafficStateLabel.value || '--')
 
-// 次要字段折叠状态（VoWiFi 模式）
-const showVowifiDetail = ref(false)
-
-// ---- VoWiFi 模式计算属性 ----
-
-const readinessItems = computed(() => {
-  const rt = props.device?.vowifi_runtime
-  return [
-    { key: 'SIM',    ready: rt?.sim_ready },
-    { key: 'Access', ready: rt?.access_ready },
-    { key: 'Tunnel', ready: rt?.tunnel_ready },
-    { key: 'IMS',    ready: rt?.ims_ready },
-    { key: 'SMS',    ready: rt?.sms_ready },
-  ]
-})
-
-// 'ok' | 'partial' | 'off'
-const vowifiStatus = computed<'ok' | 'partial' | 'off'>(() => {
-  const rt = props.device?.vowifi_runtime
-  if (!rt) return 'off'
-  const all = [rt.sim_ready, rt.access_ready, rt.tunnel_ready, rt.ims_ready, rt.sms_ready]
-  if (all.every(Boolean)) return 'ok'
-  if (all.some(Boolean)) return 'partial'
-  return 'off'
-})
-
-// 未就绪的环节名称列表
-const notReadyNames = computed(() =>
-  readinessItems.value.filter(i => !i.ready).map(i => i.key)
-)
-
-// 有错误时自动展开
-const hasError = computed(() =>
-  !!(props.device?.vowifi_runtime?.last_error_class || props.device?.vowifi_runtime?.last_reason)
-)
-
-// ---- 窝蜂模式计算属性 ----
+// ---- 蜂窝模式计算属性 ----
 
 function hasValidSignalDbm(dbm: number | null | undefined): dbm is number {
   return typeof dbm === 'number' && Number.isFinite(dbm) && dbm !== 0 && dbm !== -999
@@ -120,14 +82,8 @@ const signalBarColor = computed(() => ({
 }[signalColor.value]))
 
 const flightModeEnabled = computed(() => {
-  if (props.device?.vowifi_active) return true
   const mode = props.device?.modem?.operating_mode
   return mode === 0 || mode === 4
-})
-
-const vowifiStatusTone = computed<StatusLightTone>(() => {
-  if (vowifiStatus.value === 'partial') return 'warning'
-  return vowifiStatus.value === 'ok' ? 'success' : 'danger'
 })
 
 const flightModeStatusText = computed(() => {
@@ -171,78 +127,9 @@ const networkPanelMessage = computed(() => {
     <div class="ui-panel-muted p-4">
       <div class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">运行状态</div>
 
-      <!-- ── VoWiFi 模式 ── -->
-      <template v-if="device?.vowifi_enabled">
+      <!-- ── 蜂窝模式 ── -->
 
-        <!-- Hero pill -->
-        <div
-          class="flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 mb-3 border"
-          :class="{
-            'bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/25': vowifiStatus === 'ok',
-            'bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/25':         vowifiStatus === 'partial',
-            'bg-red-50 border-red-200 dark:bg-red-500/10 dark:border-red-500/25':                 vowifiStatus === 'off',
-          }"
-        >
-          <!-- 状态点 -->
-          <StatusLight :tone="vowifiStatusTone" size="sm" :animated="vowifiStatus !== 'off'" />
-          <div class="min-w-0">
-            <div class="text-sm font-bold leading-tight" :class="{
-              'text-emerald-700 dark:text-emerald-300': vowifiStatus === 'ok',
-              'text-amber-700 dark:text-amber-300':     vowifiStatus === 'partial',
-              'text-red-700 dark:text-red-300':         vowifiStatus === 'off',
-            }">
-              <template v-if="vowifiStatus === 'ok'">WiFi-Calling · 全部就绪</template>
-              <template v-else-if="vowifiStatus === 'partial'">{{ notReadyNames.join(' · ') }} 未就绪</template>
-              <template v-else>VoWiFi 未连接</template>
-            </div>
-            <div v-if="vowifiStatus === 'partial' && device?.vowifi_runtime?.last_reason"
-              class="text-xs text-amber-600 dark:text-amber-400 mt-0.5 truncate">
-              {{ device.vowifi_runtime.last_reason }}
-            </div>
-          </div>
-        </div>
-
-        <!-- Readiness 进度条 -->
-        <div class="mb-3">
-          <div class="flex gap-1 mb-1">
-            <div
-              v-for="item in readinessItems" :key="item.key"
-              class="flex-1 h-1.5 rounded-full"
-              :class="item.ready === true  ? 'bg-emerald-500 dark:bg-emerald-400'
-                    : item.ready === false ? 'bg-red-500 dark:bg-red-400'
-                    : 'bg-gray-200 dark:bg-white/10'"
-            />
-          </div>
-          <div class="flex justify-between">
-            <span
-              v-for="item in readinessItems" :key="item.key"
-              class="flex-1 text-center text-[10px]"
-              :class="item.ready === false ? 'text-red-500 dark:text-red-400 font-bold' : 'text-gray-400 dark:text-gray-500'"
-            >{{ item.key }}</span>
-          </div>
-        </div>
-
-        <!-- 次要字段（有错误自动展开，否则可折叠） -->
-        <div class="border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
-          <button
-            class="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-            @click="showVowifiDetail = !showVowifiDetail"
-          >
-            <span class="font-bold uppercase tracking-wider">详情</span>
-            <span>{{ showVowifiDetail || hasError ? '▴' : '▾' }}</span>
-          </button>
-          <div v-if="showVowifiDetail || hasError" class="px-3 pb-2 space-y-1.5 text-sm text-gray-700 dark:text-gray-200 border-t border-gray-100 dark:border-white/5 pt-2">
-            <FieldRow label="数据平面" :value="device?.vowifi_runtime?.dataplane_mode || '--'" monospace />
-            <FieldRow label="最后原因" :value="device?.vowifi_runtime?.last_reason || '--'" />
-            <FieldRow label="错误分类" :value="device?.vowifi_runtime?.last_error_class || '--'" monospace copyable />
-          </div>
-        </div>
-      </template>
-
-      <!-- ── 窝蜂模式 ── -->
-      <template v-else>
-
-        <!-- 运营商 hero（与 VoWiFi pill 统一样式） -->
+        <!-- 运营商 hero -->
         <div class="flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 mb-3 border"
           :class="isRegistered
             ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/25'
@@ -313,7 +200,6 @@ const networkPanelMessage = computed(() => {
           <FieldRow label="信道"  :value="device?.modem?.radio_channel ? String(device.modem.radio_channel) : '--'" monospace />
           <FieldRow label="注册状态"  :value="device?.modem?.reg_status_text || '--'" monospace />
         </div>
-      </template>
     </div>
 
     <!-- ===== SIM / 设备面板（不变）===== -->
@@ -332,19 +218,6 @@ const networkPanelMessage = computed(() => {
         <FieldRow label="ICCID"     :value="device?.modem?.iccid"  :sensitive="!showSensitive" monospace copyable />
         <FieldRow label="IMSI"      :value="device?.modem?.imsi"   :sensitive="!showSensitive" monospace copyable />
         <FieldRow label="本机号码" :value="device?.local_phone || '--'"  :sensitive="!showSensitive" monospace copyable />
-        <div v-if="device?.e911_setup_available" class="flex justify-between gap-3">
-          <span class="text-gray-500">E911地址</span>
-          <el-button
-            size="small"
-            type="primary"
-            plain
-            :loading="e911Starting"
-            class="!border-0"
-            @click="emit('setup-e911')"
-          >
-            设置
-          </el-button>
-        </div>
         <FieldRow v-if="activeEsimProfileName" label="当前eSIM" :value="activeEsimProfileName" monospace copyable />
         <FieldRow label="原运营商" :value="simOperatorDisplay" copyable />
         <FieldRow label="固件版本"      :value="device?.modem?.firmware" monospace copyable />

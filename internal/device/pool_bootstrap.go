@@ -8,15 +8,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/apduarbiter"
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/esim"
-	mbimcore "github.com/iniwex5/vohive/internal/mbim"
-	"github.com/iniwex5/vohive/internal/modem"
-	qmicore "github.com/iniwex5/vohive/internal/qmi"
-	"github.com/iniwex5/vohive/pkg/logger"
-	"github.com/iniwex5/vohive/pkg/smscodec"
+	"github.com/openvohive/openvohive/internal/apduarbiter"
+	"github.com/openvohive/openvohive/internal/backend"
+	"github.com/openvohive/openvohive/internal/config"
+	"github.com/openvohive/openvohive/internal/esim"
+	mbimcore "github.com/openvohive/openvohive/internal/mbim"
+	"github.com/openvohive/openvohive/internal/modem"
+	qmicore "github.com/openvohive/openvohive/internal/qmi"
+	"github.com/openvohive/openvohive/pkg/logger"
+	"github.com/openvohive/openvohive/pkg/smscodec"
 
 	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
 )
@@ -75,13 +75,6 @@ func requiresQMICore(cfg config.DeviceConfig) bool {
 	return hasManagedQMINetwork(cfg) ||
 		resolvedBackendMode(cfg) != backend.BackendAT ||
 		config.NormalizeESIMTransport(cfg.ESIMTransport) == config.ESIMTransportQMI
-}
-
-// needsATPortDiscovery 判断是否需要按 IMEI 反查 AT 端口:仅 AT 后端、且当前没有 AT
-// 端口时才需要。MBIM 设备靠 control_device 起、压根没有 AT 口,绝不能进 AT 反查
-// (否则会以"未找到匹配 IMEI 的 AT 端口"启动失败)。
-func needsATPortDiscovery(cfg config.DeviceConfig) bool {
-	return !requiresMBIMCore(cfg) && strings.TrimSpace(cfg.ATPort) == ""
 }
 
 func requiresMBIMCore(cfg config.DeviceConfig) bool {
@@ -204,10 +197,6 @@ func (p *Pool) AddWorkerFromConfig(devCfg config.DeviceConfig) (*Worker, error) 
 	if p.rebuilding[devCfg.ID] {
 		p.mu.Unlock()
 		return nil, fmt.Errorf("设备 %s 正在初始化中，请勿重复触发", devCfg.ID)
-	}
-	if FreeDeviceLimitReached(len(p.workers)) {
-		p.mu.Unlock()
-		return nil, fmt.Errorf("%s", FreeDeviceWorkerLimitMessage())
 	}
 	p.rebuilding[devCfg.ID] = true
 	attempt := p.beginRebuildAttemptLocked(devCfg.ID)
@@ -660,7 +649,6 @@ func (p *Pool) AddWorkerFromConfig(devCfg config.DeviceConfig) (*Worker, error) 
 		}
 		worker.PreWarmCache()
 		// 缓存预热完成后，触发一次状态广播，强制前端 SSE 推流更新最新设备数据
-		p.broadcastVoWiFiStateChange(worker.ID)
 	}(w)
 
 	go func(worker *Worker) {
@@ -710,7 +698,6 @@ func (p *Pool) AddWorkerFromConfig(devCfg config.DeviceConfig) (*Worker, error) 
 					}
 				case smsModeMBIM:
 					worker.handleNewSMSMBIM("poll")
-				case smsModeVoWiFi:
 				}
 			}
 		}

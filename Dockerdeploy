@@ -1,0 +1,27 @@
+#!/bin/bash
+set -euo pipefail
+
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <remote_host>"
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_NAME="$(basename "$SCRIPT_DIR")"
+REMOTE_HOST="$1"
+REMOTE_DIR="/disk/runtime/${PROJECT_NAME}"
+
+trap 'echo "Error at line $LINENO (command: $BASH_COMMAND)" >&2' ERR
+
+echo "Running build script..."
+"${SCRIPT_DIR}/Dockerbuild"
+
+echo "Transferring image to ${REMOTE_HOST} and deploying..."
+docker save "${PROJECT_NAME}:latest" | gzip | ssh -T "${REMOTE_HOST}" "
+    set -euo pipefail
+    gunzip | docker load
+    cd '${REMOTE_DIR}'
+    docker compose up -d --force-recreate
+"
+
+echo "Deployment complete."

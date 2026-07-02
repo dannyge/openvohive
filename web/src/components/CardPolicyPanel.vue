@@ -16,22 +16,17 @@ const emit = defineEmits<{
   policyChanged: []
 }>()
 
-// 本地镜像（跟上游 policy 同步）。airplane 直接镜像存储的“用户飞行意图”，
-// 与 vowifi 解耦：开 VoWiFi 不再把飞行开关显示成关（VoWiFi 接管时开关仍点亮但禁用），
-// 关掉 VoWiFi 后按该意图回退（之前飞行回飞行，否则回在线）。
+// 本地镜像（跟上游 policy 同步）。airplane 直接镜像存储的“用户飞行意图”。
 const local = ref<{
   network_enabled: boolean
-  vowifi_enabled: boolean
   airplane_enabled: boolean
   ip_version: 'v4' | 'v6' | 'v4v6'
   apn: string
-}>({ network_enabled: false, vowifi_enabled: false, airplane_enabled: false, ip_version: 'v4', apn: '' })
+}>({ network_enabled: false, airplane_enabled: false, ip_version: 'v4', apn: '' })
 
 // 各开关的热切换中间态（pending/failed）
 const networkPending = ref(false)
 const networkFailed = ref(false)
-const vowifiPending = ref(false)
-const vowifiFailed = ref(false)
 const airplanePending = ref(false)
 const airplaneFailed = ref(false)
 
@@ -41,13 +36,10 @@ watch(
   (p) => {
     if (!p) return
     local.value.network_enabled = p.network_enabled
-    local.value.vowifi_enabled = p.vowifi_enabled
-    // 直接镜像存储的飞行意图（VoWiFi 开启时也如实点亮，开关由 vowifi 禁用）
     local.value.airplane_enabled = p.airplane_enabled
     local.value.ip_version = p.ip_version || 'v4'
     local.value.apn = p.apn || ''
     networkFailed.value = false
-    vowifiFailed.value = false
     airplaneFailed.value = false
   },
   { immediate: true }
@@ -81,36 +73,9 @@ async function onNetworkToggle(rawVal: string | number | boolean) {
     networkFailed.value = true
   } else {
     networkFailed.value = false
-    // 开网络与 vowifi/飞行互斥（后端已互斥落库，这里同步 UI）
+    // 开网络与飞行互斥（后端已互斥落库，这里同步 UI）
     if (val) {
-      local.value.vowifi_enabled = false
       local.value.airplane_enabled = false
-    }
-    emit('policyChanged')
-  }
-}
-
-async function onVoWiFiToggle(rawVal: string | number | boolean) {
-  const val = rawVal as boolean
-  if (!props.deviceId || !canToggle.value) return
-  vowifiPending.value = true
-  vowifiFailed.value = false
-  const prev = !val
-  let result
-  if (val) {
-    result = await devicesService.enableVoWiFi(props.deviceId)
-  } else {
-    result = await devicesService.disableVoWiFi(props.deviceId)
-  }
-  vowifiPending.value = false
-  if (!result.ok) {
-    local.value.vowifi_enabled = prev
-    vowifiFailed.value = true
-  } else {
-    vowifiFailed.value = false
-    // 开 VoWiFi：仅互斥关网络；不动飞行意图（保留用户飞行态，关 VoWiFi 后据此回退）
-    if (val) {
-      local.value.network_enabled = false
     }
     emit('policyChanged')
   }
@@ -129,10 +94,9 @@ async function onAirplaneToggle(rawVal: string | number | boolean) {
     airplaneFailed.value = true
   } else {
     airplaneFailed.value = false
-    // 开飞行与网络/vowifi 互斥（后端已互斥落库，这里同步 UI）
+    // 开飞行与网络互斥（后端已互斥落库，这里同步 UI）
     if (val) {
       local.value.network_enabled = false
-      local.value.vowifi_enabled = false
     }
     emit('policyChanged')
   }
@@ -148,7 +112,7 @@ async function onAirplaneToggle(rawVal: string | number | boolean) {
       </div>
       <div>
         <div class="text-lg font-bold text-gray-900 dark:text-white">卡策略</div>
-        <div class="text-xs text-gray-500 dark:text-gray-400">网络/VoWiFi 开关跟着 SIM 卡走，切换即时生效</div>
+        <div class="text-xs text-gray-500 dark:text-gray-400">网络/飞行模式开关跟着 SIM 卡走，切换即时生效</div>
       </div>
     </div>
 
@@ -199,37 +163,15 @@ async function onAirplaneToggle(rawVal: string | number | boolean) {
           <div class="flex items-center justify-between">
             <div>
               <div class="text-sm font-bold text-gray-800 dark:text-gray-100">开启网络</div>
-              <div class="text-xs text-gray-500 dark:text-gray-400">VoWiFi/飞行开启时不可用</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">飞行模式开启时不可用</div>
             </div>
             <div class="flex items-center gap-2">
               <span v-if="networkFailed" class="text-xs text-orange-500 dark:text-orange-400">未生效</span>
               <el-icon v-if="networkPending" class="animate-spin text-gray-400"><Loading /></el-icon>
               <el-switch
                 v-model="local.network_enabled"
-                :disabled="!canToggle || local.vowifi_enabled || local.airplane_enabled || networkPending"
+                :disabled="!canToggle || local.airplane_enabled || networkPending"
                 @change="onNetworkToggle"
-              />
-            </div>
-          </div>
-        </div>
-
-        <!-- VoWiFi -->
-        <div
-          class="ui-panel-muted p-3 space-y-1"
-          :class="local.vowifi_enabled ? 'border border-orange-300 bg-orange-50/50 dark:bg-orange-900/20' : ''"
-        >
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-sm font-bold text-gray-800 dark:text-gray-100">VoWiFi</div>
-              <div class="text-xs text-gray-500 dark:text-gray-400">启用后进飞行模式，不支持国内运营商</div>
-            </div>
-            <div class="flex items-center gap-2">
-              <span v-if="vowifiFailed" class="text-xs text-orange-500 dark:text-orange-400">未生效</span>
-              <el-icon v-if="vowifiPending" class="animate-spin text-gray-400"><Loading /></el-icon>
-              <el-switch
-                v-model="local.vowifi_enabled"
-                :disabled="!canToggle || vowifiPending"
-                @change="onVoWiFiToggle"
               />
             </div>
           </div>
@@ -244,7 +186,7 @@ async function onAirplaneToggle(rawVal: string | number | boolean) {
             <div class="flex items-center gap-2">
               <div>
                 <div class="text-sm font-bold text-gray-800 dark:text-gray-100">飞行模式</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">射频关闭，断网；VoWiFi 开启时由其接管</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">射频关闭，断网</div>
               </div>
             </div>
             <div class="flex items-center gap-2">
@@ -252,7 +194,7 @@ async function onAirplaneToggle(rawVal: string | number | boolean) {
               <el-icon v-if="airplanePending" class="animate-spin text-gray-400"><Loading /></el-icon>
               <el-switch
                 v-model="local.airplane_enabled"
-                :disabled="!canToggle || local.vowifi_enabled || airplanePending"
+                :disabled="!canToggle || airplanePending"
                 @change="onAirplaneToggle"
               />
             </div>

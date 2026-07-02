@@ -11,7 +11,6 @@ import (
 type LegacyDevicePolicy struct {
 	ICCID          string
 	NetworkEnabled bool
-	VoWiFiEnabled  bool
 	IPVersion      string
 	APN            string
 }
@@ -44,7 +43,6 @@ func ReadLegacyDevicePoliciesFromYAML(path string, iccidFor func(deviceID string
 		Devices []struct {
 			ID             string `yaml:"id"`
 			NetworkEnabled bool   `yaml:"network_enabled"`
-			VoWiFiEnabled  bool   `yaml:"vowifi_enabled"`
 			IPVersion      string `yaml:"ip_version"`
 			APN            string `yaml:"apn"`
 		} `yaml:"devices"`
@@ -57,7 +55,6 @@ func ReadLegacyDevicePoliciesFromYAML(path string, iccidFor func(deviceID string
 		out = append(out, LegacyDevicePolicy{
 			ICCID:          iccidFor(d.ID),
 			NetworkEnabled: d.NetworkEnabled,
-			VoWiFiEnabled:  d.VoWiFiEnabled,
 			IPVersion:      d.IPVersion,
 			APN:            d.APN,
 		})

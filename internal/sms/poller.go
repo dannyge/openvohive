@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/device"
-	"github.com/iniwex5/vohive/internal/modem"
-	"github.com/iniwex5/vohive/internal/smsnotify"
-	"github.com/iniwex5/vohive/pkg/logger"
-	"github.com/iniwex5/vohive/pkg/smscodec"
+	"github.com/openvohive/openvohive/internal/device"
+	"github.com/openvohive/openvohive/internal/modem"
+	"github.com/openvohive/openvohive/internal/smsnotify"
+	"github.com/openvohive/openvohive/pkg/logger"
+	"github.com/openvohive/openvohive/pkg/smscodec"
 )
 
 type Poller struct {
@@ -274,38 +274,5 @@ func (s *Poller) deleteAllMessages() {
 	_, err := s.modem.ExecuteAT("AT+CMGD=1,4", 5*time.Second)
 	if err != nil {
 		logger.Warn("删除短信失败", "device", s.deviceID, "err", err)
-	}
-}
-
-// cleanupOldSMS 清理旧短信，保留最新的 keepCount 条 (备用方法)
-func (s *Poller) cleanupOldSMS(keepCount int) {
-	resp, err := s.modem.ExecuteAT("AT+CMGL=4", 10*time.Second)
-	if err != nil {
-		return
-	}
-
-	var indices []int
-	lines := strings.Split(resp, "\r\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "+CMGL:") {
-			parts := strings.Split(line, ",")
-			if len(parts) > 0 {
-				idxStr := strings.TrimSpace(strings.TrimPrefix(parts[0], "+CMGL:"))
-				if idx, err := strconv.Atoi(idxStr); err == nil {
-					indices = append(indices, idx)
-				}
-			}
-		}
-	}
-
-	if len(indices) <= keepCount {
-		return
-	}
-
-	// 按索引排序，删除旧的
-	sort.Ints(indices)
-	deleteCount := len(indices) - keepCount
-	for i := 0; i < deleteCount; i++ {
-		s.modem.ExecuteAT(fmt.Sprintf("AT+CMGD=%d", indices[i]), 3*time.Second)
 	}
 }

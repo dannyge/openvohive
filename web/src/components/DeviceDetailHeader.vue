@@ -6,14 +6,12 @@ defineProps<{
   device: DeviceOverviewItem
   rotating: boolean
   rebooting: boolean
-  reconnectingVoWiFi: boolean
 }>()
 
 const emit = defineEmits<{
   'copy-text': [value: string]
   'rotate-ip': []
   'reboot-modem': []
-  'reconnect-vowifi': []
   'open-sms': []
 }>()
 </script>
@@ -36,11 +34,7 @@ const emit = defineEmits<{
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
-        <el-button v-if="device?.vowifi_enabled" :loading="reconnectingVoWiFi" @click="emit('reconnect-vowifi')" class="ui-glass-border !border-0">
-          <el-icon><ArrowSync24Regular /></el-icon>
-          重连 VoWiFi
-        </el-button>
-        <el-button v-else :loading="rotating" :disabled="!device?.network_connected" @click="emit('rotate-ip')" class="ui-glass-border !border-0">
+        <el-button :loading="rotating" :disabled="!device?.network_connected" @click="emit('rotate-ip')" class="ui-glass-border !border-0">
           <el-icon><ArrowSync24Regular /></el-icon>
           切换 IP
         </el-button>

@@ -22,14 +22,4 @@ func deviceIDParam(c *gin.Context) string {
 	return firstPathParam(c, "device_id", "id")
 }
 
-func upstreamProxyIDParam(c *gin.Context) string {
-	return firstPathParam(c, "proxy_id", "id")
-}
 
-func countryCodeParam(c *gin.Context) string {
-	return firstPathParam(c, "country_code", "country")
-}
-
-func proxyInstanceIDParam(c *gin.Context) string {
-	return firstPathParam(c, "instance_id", "id")
-}

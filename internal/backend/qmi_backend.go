@@ -11,10 +11,9 @@ import (
 
 	"github.com/iniwex5/quectel-qmi-go/pkg/manager"
 	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
-	"github.com/iniwex5/vohive/internal/modem"
-	"github.com/iniwex5/vohive/pkg/logger"
-	"github.com/iniwex5/vohive/pkg/smscodec"
-	"github.com/warthog618/sms/encoding/tpdu"
+	"github.com/openvohive/openvohive/internal/modem"
+	"github.com/openvohive/openvohive/pkg/logger"
+	"github.com/openvohive/openvohive/pkg/smscodec"
 )
 
 // QMISource 定义了 QMI 后端需要从底层 QMI Core 提供者 (qmicore.Manager) 获得的所有功能接口。
@@ -1021,26 +1020,4 @@ func (q *QMIBackend) TransmitAPDU(ctx context.Context, channelID int, command st
 		return "", err
 	}
 	return hex.EncodeToString(resp), nil
-}
-
-func isLikelyShortCode(phone string) bool {
-	phone = strings.TrimSpace(phone)
-	if phone == "" {
-		return false
-	}
-	if strings.HasPrefix(phone, "+") {
-		return false
-	}
-	digits := strings.TrimLeft(phone, "0123456789")
-	return digits == "" && len(phone) <= 6
-}
-
-func normalizeSubmitDestinationForShortCode(pdu *tpdu.TPDU) {
-	if pdu == nil {
-		return
-	}
-	da := pdu.DA
-	da.SetTypeOfNumber(tpdu.TonUnknown)
-	da.SetNumberingPlan(tpdu.NpISDN)
-	pdu.DA = da
 }

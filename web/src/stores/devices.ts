@@ -8,7 +8,6 @@ import { useEventStream } from '../composables/useEventStream'
 
 export const useDevicesStore = defineStore('devices', () => {
   const list = ref<DeviceListVM[]>([])
-  const deviceLimit = ref<number>(0)
   const detail = ref<DeviceDetailVM | null>(null)
   const discovered = ref<DiscoveredDevice[]>([])
   const config = ref<DeviceConfigDTO | null>(null)
@@ -74,7 +73,6 @@ export const useDevicesStore = defineStore('devices', () => {
     const result = await devicesService.listManaged(signal)
     if (result.ok) {
       list.value = result.data.devices
-      deviceLimit.value = result.data.deviceLimit
       lastOkAt.value = Date.now()
       error.value = null
     } else {
@@ -103,7 +101,6 @@ export const useDevicesStore = defineStore('devices', () => {
 
   return {
     list,
-    deviceLimit,
     detail,
     discovered,
     config,

@@ -3,8 +3,8 @@ package device
 import (
 	"time"
 
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/internal/backend"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
 var atRadioWarmupDelays = []time.Duration{0, time.Second, 3 * time.Second, 8 * time.Second}
@@ -40,7 +40,6 @@ func (p *Pool) scheduleATRadioWarmup(worker *Worker, reason string) {
 				logger.Debug("AT radio 启动预热失败", "device", worker.ID, "attempt", i+1, "reason", reason, "err", err)
 				continue
 			}
-			p.broadcastVoWiFiStateChange(worker.ID)
 		}
 	}()
 }

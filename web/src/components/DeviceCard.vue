@@ -7,7 +7,6 @@ import {
   Cellular4G24Regular,
   Cellular5G24Regular,
   CellularData124Regular,
-  Wifi124Regular, 
   Globe24Regular,
   Sim24Regular
 } from '@vicons/fluent'
@@ -25,8 +24,6 @@ const displayNetworkMode = computed(() => {
 })
 
 const networkIcon = computed(() => {
-  // VoWiFi 模式显示 Wi-Fi 图标
-  if (props.device?.vowifi_active) return Wifi124Regular
   const mode = displayNetworkMode.value
   if (!mode) return CellularData124Regular
   const m = String(mode).toUpperCase()
@@ -37,8 +34,6 @@ const networkIcon = computed(() => {
 })
 
 const networkColor = computed(() => {
-  // VoWiFi 模式显示特殊颜色
-  if (props.device?.vowifi_active) return 'text-emerald-500'
   const mode = displayNetworkMode.value
   if (!mode) return 'text-gray-400'
   const m = String(mode).toUpperCase()
@@ -114,7 +109,7 @@ function getSignalBars(dbm: number | null | undefined) {
                 <component :is="networkIcon" />
               </el-icon>
               <span
-                v-if="!device.vowifi_active && device.network_mode && networkModeText"
+                v-if="device.network_mode && networkModeText"
                 class="text-[11px] font-bold tracking-tighter leading-none"
                 :class="hideNetworkModeOnNarrow ? 'hidden xl:inline' : ''"
               >
@@ -122,10 +117,10 @@ function getSignalBars(dbm: number | null | undefined) {
               </span>
             </div>
             <span class="flex-1 min-w-0 text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap truncate">
-              {{ device.vowifi_active ? 'Wi-Fi Calling' : (device.operator || '检测中...') }}
+              {{ device.operator || '检测中...' }}
             </span>
           </div>
-          <div v-if="!device.vowifi_active" class="flex items-center gap-1" title="信号强度">
+          <div class="flex items-center gap-1" title="信号强度">
             <div class="flex items-end gap-[2px] h-3">
               <div
                 v-for="i in 4"

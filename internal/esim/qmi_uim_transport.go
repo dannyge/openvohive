@@ -8,8 +8,8 @@ import (
 	"time"
 
 	qmiq "github.com/iniwex5/quectel-qmi-go/pkg/qmi"
-	"github.com/iniwex5/vohive/internal/apduarbiter"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/internal/apduarbiter"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
 // QMIUIMTransport 提供独立于 qmicore.Manager 的 QMI UIM APDU 传输实现。
@@ -240,5 +240,7 @@ func (t *QMIUIMTransport) releaseAllAPDULeases(reason string) {
 	t.coord.releaseAllSessions(t.controlDevice, reason)
 }
 
-var _ QMIAPDUTransport = (*QMIUIMTransport)(nil)
-var _ QMIAPDUTransportLifecycle = (*QMIUIMTransport)(nil)
+var (
+	_ QMIAPDUTransport          = (*QMIUIMTransport)(nil)
+	_ QMIAPDUTransportLifecycle = (*QMIUIMTransport)(nil)
+)

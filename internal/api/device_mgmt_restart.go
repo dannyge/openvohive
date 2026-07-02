@@ -1,6 +1,6 @@
 package api
 
-import "github.com/iniwex5/vohive/internal/config"
+import "github.com/openvohive/openvohive/internal/config"
 
 func deviceConfigRequiresRestart(old config.DeviceConfig, next config.DeviceConfig) bool {
 	if config.NormalizeIMEI(old.ModemIMEI) != config.NormalizeIMEI(next.ModemIMEI) {
@@ -10,9 +10,6 @@ func deviceConfigRequiresRestart(old config.DeviceConfig, next config.DeviceConf
 		return true
 	}
 	if old.Interface != next.Interface {
-		return true
-	}
-	if old.ProxyPort != next.ProxyPort {
 		return true
 	}
 	if old.ATPort != next.ATPort {

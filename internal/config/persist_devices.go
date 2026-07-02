@@ -53,11 +53,6 @@ func UpdateDeviceInFile(path string, deviceID string, newDevice DeviceConfig) er
 			deleteMapKey(n, "qmi_proxy_executable")
 		}
 
-		if newDevice.ProxyPort > 0 {
-			setMapInt(n, "proxy_port", newDevice.ProxyPort)
-		} else {
-			deleteMapKey(n, "proxy_port")
-		}
 
 		deleteMapKey(n, legacyManagedNetworkKey)
 
@@ -183,9 +178,6 @@ func deviceConfigToNode(d DeviceConfig) *yaml.Node {
 	if d.QMIProxyExecutable != "" {
 		appendMapScalar(m, "qmi_proxy_executable", d.QMIProxyExecutable)
 	}
-	if d.ProxyPort > 0 {
-		appendMapInt(m, "proxy_port", d.ProxyPort)
-	}
 
 	return m
 }
@@ -247,10 +239,6 @@ func setMapScalar(m *yaml.Node, key, value string) {
 	setMapNode(m, key, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value})
 }
 
-func setMapInt(m *yaml.Node, key string, value int) {
-	setMapNode(m, key, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprintf("%d", value)})
-}
-
 func setMapBool(m *yaml.Node, key string, value bool) {
 	val := "false"
 	if value {
@@ -263,13 +251,6 @@ func appendMapScalar(m *yaml.Node, key, value string) {
 	m.Content = append(m.Content,
 		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
 		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value},
-	)
-}
-
-func appendMapInt(m *yaml.Node, key string, value int) {
-	m.Content = append(m.Content,
-		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
-		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprintf("%d", value)},
 	)
 }
 

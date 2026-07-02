@@ -7,8 +7,8 @@ import (
 	"net/smtp"
 	"strings"
 
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/internal/config"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
 type EmailChannel struct {

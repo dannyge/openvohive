@@ -15,7 +15,6 @@ const props = defineProps<{
   selectedId: string
   filteredDevices: DeviceMgmtListItem[]
   deviceCount: number
-  deviceLimit: number
 }>()
 
 const emit = defineEmits<{
@@ -63,14 +62,12 @@ const registrationText = (d: DeviceMgmtListItem) => {
 }
 
 const dataNetworkText = (d: DeviceMgmtListItem) => {
-  if (d?.vowifi_enabled) return ''
   if (!d?.network_enabled) return '数据未开启'
   if (!d?.network_connected) return '数据网络未连接'
   return ''
 }
 
 const secondaryStatus = (d: DeviceMgmtListItem) => {
-  if (d?.vowifi_enabled) return 'WiFi-Calling'
   return [registrationText(d), dataNetworkText(d)].filter(Boolean).join(' · ')
 }
 </script>
@@ -96,15 +93,6 @@ const secondaryStatus = (d: DeviceMgmtListItem) => {
         <el-option label="升序" value="asc" />
         <el-option label="降序" value="desc" />
       </el-select>
-      <div v-if="deviceLimit > 0" class="flex items-center">
-        <el-tag
-          size="small"
-          :type="deviceCount >= deviceLimit ? 'warning' : 'info'"
-          class="w-full justify-center"
-        >
-          配额 {{ deviceCount }} / {{ deviceLimit }}
-        </el-tag>
-      </div>
     </div>
 
     <ListSkeleton v-if="loading && filteredDevices.length === 0" :rows="8" />

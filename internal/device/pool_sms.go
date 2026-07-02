@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/db"
-	"github.com/iniwex5/vohive/internal/modem"
-	qmicore "github.com/iniwex5/vohive/internal/qmi"
-	"github.com/iniwex5/vohive/internal/smsnotify"
-	"github.com/iniwex5/vohive/pkg/logger"
-	"github.com/iniwex5/vohive/pkg/smscodec"
+	"github.com/openvohive/openvohive/internal/backend"
+	"github.com/openvohive/openvohive/internal/db"
+	"github.com/openvohive/openvohive/internal/modem"
+	qmicore "github.com/openvohive/openvohive/internal/qmi"
+	"github.com/openvohive/openvohive/internal/smsnotify"
+	"github.com/openvohive/openvohive/pkg/logger"
+	"github.com/openvohive/openvohive/pkg/smscodec"
 
 	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
 	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
@@ -300,29 +300,6 @@ func (w *Worker) getIMEIWithContext(ctx context.Context) string {
 		return w.Modem.GetIMEI()
 	}
 	return ""
-}
-
-func (w *Worker) getSMSCWithContext(ctx context.Context) (string, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if w == nil {
-		return "", fmt.Errorf("worker 为空")
-	}
-	if w.Backend != nil {
-		if provider, ok := w.Backend.(backend.SMSCProvider); ok {
-			v, err := provider.GetSMSC(ctx)
-			return strings.TrimSpace(v), err
-		}
-		if w.Backend.Mode() != backend.BackendAT {
-			return "", fmt.Errorf("backend=%s 未实现 SMSCProvider", w.Backend.Mode())
-		}
-	}
-	if w.Modem != nil {
-		v, err := w.Modem.QuerySMSC()
-		return strings.TrimSpace(v), err
-	}
-	return "", nil
 }
 
 func (w *Worker) getPhoneNumberWithContext(ctx context.Context) string {

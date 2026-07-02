@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/device"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/internal/backend"
+	"github.com/openvohive/openvohive/internal/config"
+	"github.com/openvohive/openvohive/internal/device"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
 type operatorScanResponse struct {
@@ -26,7 +26,7 @@ type operatorScanResponse struct {
 
 func operatorSelectionErrorStatus(err error) int {
 	switch {
-	case errors.Is(err, device.ErrVoWiFiActive), errors.Is(err, device.ErrESIMSwitching):
+	case errors.Is(err, device.ErrESIMSwitching):
 		return http.StatusConflict
 	case errors.Is(err, device.ErrOperatorSelectionNotSupported):
 		return http.StatusBadRequest

@@ -5,16 +5,17 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/google/uuid"
-	"github.com/iniwex5/vohive/internal/modem"
-	"github.com/iniwex5/vohive/internal/sipgw"
-	"github.com/iniwex5/vohive/pkg/logger"
-	"github.com/iniwex5/vowifi-go/runtimehost/voicehost"
+	"github.com/openvohive/openvohive/internal/modem"
+	"github.com/openvohive/openvohive/internal/sipgw"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
 // CallState 定义 CS 呼叫状态
@@ -464,7 +465,7 @@ func (m *Manager) handleClientAnswer(call *CSCall, callID string, res *sip.Respo
 	logger.Info(fmt.Sprintf("[%s] CSCall: 客户端已接听，开始建立媒体通道", m.deviceID))
 
 	// 解析 SDP 获取远端 RTP 地址
-	sdpInfo, err := voicehost.ParseSDP(res.Body())
+	sdpInfo, err := parseSDP(res.Body())
 	if err == nil {
 		call.clientAddr = &net.UDPAddr{
 			IP:   net.ParseIP(sdpInfo.ConnectionIP),
@@ -662,7 +663,7 @@ func (m *Manager) HandleOutboundInvite(deviceID string, req *sip.Request, tx sip
 
 	// 解析 Linphone SDP 中的 RTP 客户端地址
 	if body := req.Body(); len(body) > 0 {
-		if sdpInfo, err := voicehost.ParseSDP(body); err == nil {
+		if sdpInfo, err := parseSDP(body); err == nil {
 			ab.SetClientAddr(sdpInfo.ConnectionIP, sdpInfo.MediaPort)
 		}
 	}
@@ -914,4 +915,45 @@ func (m *Manager) endCallAndHangup(sendClientSignal bool, sendATH bool) {
 			}
 		}
 	}
+}
+
+// sdpInfo 保存 SDP 解析结果
+type sdpInfo struct {
+	ConnectionIP string
+	MediaPort    int
+}
+
+// parseSDP 解析简单的 SDP 文本，提取连接地址和媒体端口。
+func parseSDP(data []byte) (*sdpInfo, error) {
+	text := string(data)
+	lines := strings.Split(text, "\n")
+
+	info := &sdpInfo{}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// c=IN IP4 <addr>
+		if strings.HasPrefix(line, "c=IN IP") {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 {
+				info.ConnectionIP = parts[len(parts)-1]
+			}
+		}
+
+		// m=audio <port> RTP/AVP ...
+		if strings.HasPrefix(line, "m=") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				port, err := strconv.Atoi(parts[1])
+				if err == nil {
+					info.MediaPort = port
+				}
+			}
+		}
+	}
+
+	if info.ConnectionIP == "" || info.MediaPort == 0 {
+		return nil, fmt.Errorf("cscall: incomplete SDP (ip=%q port=%d)", info.ConnectionIP, info.MediaPort)
+	}
+	return info, nil
 }

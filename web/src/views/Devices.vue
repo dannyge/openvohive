@@ -16,7 +16,6 @@ import DeviceUssdTab from '../components/DeviceUssdTab.vue'
 import DeviceConfigTab from '../components/DeviceConfigTab.vue'
 import CardPolicyPanel from '../components/CardPolicyPanel.vue'
 import DeviceAddDialog from '../components/DeviceAddDialog.vue'
-import CarrierWebsheetDialog from '../components/CarrierWebsheetDialog.vue'
 import TrafficAnalysisPanel from '../components/TrafficAnalysisPanel.vue'
 import { usePollingScheduler } from '../composables/usePollingScheduler'
 import { useEventStream } from '../composables/useEventStream'
@@ -26,7 +25,7 @@ import { copyToClipboard } from '../utils/clipboard'
 import { isWwanQmiControlPath } from '../utils/deviceBackend'
 import { isControlOnline, isRecoveryPhase } from '../utils/deviceLifecycle'
 import { getMccMncIndex, isoToFlagEmoji, type MccMncRow } from '../utils/mcc-mnc'
-import type { CardPolicy, CarrierWebsheetInfo, DeviceConfigDTO, DeviceMgmtListItem, DeviceOverviewItem, DiscoveredDevice, ModemStatus, PNNRecord, RealtimeTrafficSnapshot } from '../types/api'
+import type { CardPolicy, DeviceConfigDTO, DeviceMgmtListItem, DeviceOverviewItem, DiscoveredDevice, ModemStatus, PNNRecord, RealtimeTrafficSnapshot } from '../types/api'
 import type { AppError } from '../types/domain'
 import { toAppError } from '../services/http'
 import { devicesService } from '../services/devices'
@@ -40,7 +39,7 @@ import {
 const router = useRouter()
 const route = useRoute()
 const devicesStore = useDevicesStore()
-const { list: storeList, detail: storeDetail, discovered: storeDiscovered, config: storeConfig, deviceLimit } = storeToRefs(devicesStore)
+const { list: storeList, detail: storeDetail, discovered: storeDiscovered, config: storeConfig } = storeToRefs(devicesStore)
 
 let listAbort: AbortController | null = null
 let detailAbort: AbortController | null = null
@@ -71,10 +70,6 @@ const editBaseline = ref('')
 const editDirty = ref(false)
 const saving = ref(false)
 const rotating = ref(false)
-const reconnectingVoWiFi = ref(false)
-const e911Starting = ref(false)
-const e911WebsheetOpen = ref(false)
-const e911Websheet = ref<CarrierWebsheetInfo | null>(null)
 const deleting = ref(false)
 const rescanning = ref(false)
 
@@ -600,7 +595,7 @@ async function fetchCardPolicy(iccid: string | undefined) {
   }
 }
 
-// 卡策略热切换后：刷新卡策略 + 概览详情（让概览即时反映网络/VoWiFi/飞行模式面板切换）
+// 卡策略热切换后：刷新卡策略 + 概览详情（让概览即时反映网络/飞行模式面板切换）
 async function onCardPolicyChanged() {
   await Promise.all([
     fetchCardPolicy(selectedDetail.value?.modem?.iccid),
@@ -793,55 +788,6 @@ async function rotateIP() {
   } finally {
     rotating.value = false
   }
-}
-
-async function reconnectVoWiFi() {
-  const id = String(selectedId.value || '').trim()
-  if (!id) return
-  const confirmed = await ElMessageBox.confirm(
-    `确定对设备 ${id} 发起 VoWiFi 环境的重新连接拨号？这将在后台重新注册 IMS 链路。`,
-    '重连 VoWiFi',
-    { confirmButtonText: '确定重连', cancelButtonText: '取消', type: 'info' }
-  ).then(() => true).catch(() => false)
-  if (!confirmed) return
-
-  reconnectingVoWiFi.value = true
-  try {
-    const result = await devicesService.reconnectVoWiFi(id)
-    if (!result.ok) throw new Error(result.error.message || '重连请求失败')
-    ElMessage.success('已触发重连指令，VoWiFi 服务正在重启...')
-    void refreshDeviceViews().catch(() => {})
-    scheduleRefreshDeviceViews(4000)
-  } catch (e: unknown) {
-    const err = toAppError(e)
-    ElMessage.error(err.message || '重连命令下发失败')
-  } finally {
-    reconnectingVoWiFi.value = false
-  }
-}
-
-async function openE911Websheet() {
-  const id = String(selectedId.value || '').trim()
-  if (!id || e911Starting.value) return
-
-  e911Starting.value = true
-  try {
-    const result = await devicesService.startE911Websheet(id)
-    if (!result.ok) throw new Error(result.error.message || 'E911地址设置页面打开失败')
-    e911Websheet.value = result.data
-    e911WebsheetOpen.value = true
-  } catch (e: unknown) {
-    const err = toAppError(e)
-    ElMessage.error(err.message || 'E911地址设置页面打开失败')
-  } finally {
-    e911Starting.value = false
-  }
-}
-
-async function finishE911Websheet() {
-  e911WebsheetOpen.value = false
-  e911Websheet.value = null
-  await refreshDeviceViews()
 }
 
 const rebooting = ref(false)
@@ -1235,7 +1181,6 @@ usePollingScheduler(async () => {
         :selected-id="selectedId"
         :filtered-devices="filteredDevices"
         :device-count="devices.length"
-        :device-limit="deviceLimit"
         @update:query="query = $event"
         @update:status-filter="statusFilter = $event"
         @update:sort-key="sortKey = $event"
@@ -1248,10 +1193,8 @@ usePollingScheduler(async () => {
           :device="selectedDevice"
           :rotating="rotating"
           :rebooting="rebooting"
-          :reconnectingVoWiFi="reconnectingVoWiFi"
           @copy-text="copyText"
           @rotate-ip="rotateIP"
-          @reconnect-vowifi="reconnectVoWiFi"
           @reboot-modem="rebootModem"
           @open-sms="openSms"
         />
@@ -1267,8 +1210,6 @@ usePollingScheduler(async () => {
                   :traffic-speed-tx="trafficSpeedTx"
                   :traffic-minute-rx="rollingMinuteRx"
                   :traffic-minute-tx="rollingMinuteTx"
-                  :e911-starting="e911Starting"
-                  @setup-e911="openE911Websheet"
                 />
                 <TrafficAnalysisPanel
                   :analysis="deviceAnalysis"
@@ -1341,11 +1282,6 @@ usePollingScheduler(async () => {
     :add-saving="addSaving"
     @select-device="selectDiscoveredForAdd"
     @save="addDevice"
-  />
-  <CarrierWebsheetDialog
-    v-model="e911WebsheetOpen"
-    :websheet="e911Websheet"
-    @done="finishE911Websheet"
   />
 </template>
 

@@ -10,23 +10,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/apduarbiter"
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/cardpolicy"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/cscall"
-	"github.com/iniwex5/vohive/internal/db"
-	"github.com/iniwex5/vohive/internal/esim"
-	mbimcore "github.com/iniwex5/vohive/internal/mbim"
-	"github.com/iniwex5/vohive/internal/modem"
-	"github.com/iniwex5/vohive/internal/proxy/server"
-	qmicore "github.com/iniwex5/vohive/internal/qmi"
-	"github.com/iniwex5/vohive/internal/sipgw"
-	"github.com/iniwex5/vohive/internal/vowifihost"
-	"github.com/iniwex5/vohive/pkg/logger"
-	"github.com/iniwex5/vohive/pkg/smscodec"
-	"github.com/iniwex5/vowifi-go/runtimehost"
-	"github.com/iniwex5/vowifi-go/runtimehost/voicehost"
+	"github.com/openvohive/openvohive/internal/apduarbiter"
+	"github.com/openvohive/openvohive/internal/backend"
+	"github.com/openvohive/openvohive/internal/cardpolicy"
+	"github.com/openvohive/openvohive/internal/config"
+	"github.com/openvohive/openvohive/internal/cscall"
+	"github.com/openvohive/openvohive/internal/db"
+	"github.com/openvohive/openvohive/internal/esim"
+	mbimcore "github.com/openvohive/openvohive/internal/mbim"
+	"github.com/openvohive/openvohive/internal/modem"
+	qmicore "github.com/openvohive/openvohive/internal/qmi"
+	"github.com/openvohive/openvohive/internal/sipgw"
+	"github.com/openvohive/openvohive/pkg/logger"
+	"github.com/openvohive/openvohive/pkg/smscodec"
 
 	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
 	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
@@ -36,10 +32,9 @@ import (
 type smsMode int
 
 const (
-	smsModeAT     smsMode = iota // AT URC 驱动（+CMTI → AT+CMGR）
-	smsModeQMI                   // QMI WMS 驱动（EventNewSMS + 定时轮询）
-	smsModeVoWiFi                // IMS 驱动，AT/QMI 短信全禁
-	smsModeMBIM                  // MBIM SMS service 驱动（SMS_READ indication + 定时轮询）
+	smsModeAT   smsMode = iota // AT URC 驱动（+CMTI → AT+CMGR）
+	smsModeQMI                 // QMI WMS 驱动（EventNewSMS + 定时轮询）
+	smsModeMBIM                // MBIM SMS service 驱动（SMS_READ indication + 定时轮询）
 )
 
 const qmiSMSStorageUnknown uint8 = 0xFF
@@ -84,8 +79,6 @@ func (m smsMode) String() string {
 		return "AT"
 	case smsModeQMI:
 		return "QMI"
-	case smsModeVoWiFi:
-		return "VoWiFi"
 	case smsModeMBIM:
 		return "MBIM"
 	default:
@@ -107,7 +100,6 @@ type Worker struct {
 	// ESIMQMITransport 仅在未创建共享 QMI Core、但 eSIM 仍需走 QMI transport 时使用。
 	// 复用 QMICore/QMI Core 场景下为 nil。
 	ESIMQMITransport esim.QMIAPDUTransportLifecycle
-	Proxy            *server.Server
 	Pool             *Pool
 	EsimMgr          *esim.Manager
 	CSCallMgr        *cscall.Manager
@@ -140,11 +132,7 @@ type Worker struct {
 
 	reassembler *smscodec.Reassembler
 
-	// 短信工作模式：AT / QMI / VoWiFi（三模完全隔离）
 	smsMode smsMode
-
-	// 记录离开 VoWiFi 后是否应按配置恢复数据网络。
-	restoreNetworkAfterVoWiFi bool
 
 	healthMu                  sync.Mutex
 	healthConsecutiveFailures int
@@ -183,14 +171,10 @@ type Pool struct {
 
 	// SIP 注册器 (用于 CS 域语音桥接查路由)
 	sipRegistrar *sipgw.Registrar
-	voiceGateway *voicehost.Gateway
 
-	// VoWiFi host 侧整合（多实例）
-	vowifiHost         *vowifihost.Manager
 	lifecycle          *lifecycleCoordinator
 	simEventMu         sync.Mutex
 	simEventTimers     map[string]*time.Timer
-	deviceEventWakeMu  sync.Mutex
 	deviceEventWakeups map[string]*deviceEventRecoverWakeup
 
 	switchMu         sync.Mutex
@@ -200,7 +184,6 @@ type Pool struct {
 	switchSeq        uint64
 
 	// 概览监控页面流定阅数统计
-	overviewSubs atomic.Int32
 
 	// 热插拔监听
 	udevWatcher    *UdevWatcher
@@ -220,7 +203,6 @@ func NewPool(cfg *config.Config) *Pool {
 		cfg:                   cfg,
 		ctx:                   ctx,
 		cancel:                cancel,
-		vowifiHost:            vowifihost.NewManager(),
 		simEventTimers:        make(map[string]*time.Timer),
 		deviceEventWakeups:    make(map[string]*deviceEventRecoverWakeup),
 		switchingDevices:      make(map[string]bool),
@@ -229,8 +211,6 @@ func NewPool(cfg *config.Config) *Pool {
 		lifecycle:             newLifecycleCoordinator(),
 	}
 	p.transportRecovery = NewTransportRecoveryController(p)
-	p.voWiFiHost().ConfigureAdapter(p)
-	p.voWiFiHost().ConfigureRuntimeDependencies(p.GetVoiceGateway(), vowifiDeliveryStore{}, poolVoWiFiRuntimeDispatcher{pool: p})
 
 	return p
 }
@@ -277,16 +257,6 @@ func (p *Pool) assignWorkerGeneration(worker *Worker) uint64 {
 	if p.transportRecovery != nil {
 		p.transportRecovery.SetWorkerGeneration(worker.ID, generation)
 	}
-	return generation
-}
-
-func (p *Pool) currentWorkerGeneration(deviceID string) uint64 {
-	if p == nil {
-		return 0
-	}
-	p.mu.RLock()
-	generation := p.workerGenerations[deviceID]
-	p.mu.RUnlock()
 	return generation
 }
 
@@ -352,35 +322,9 @@ func (p *Pool) getNotifier() Notifier {
 
 func (p *Pool) SetNotifier(n Notifier) {
 	n = normalizeNotifier(n)
-
 	p.mu.Lock()
 	p.notifier = n
 	p.mu.Unlock()
-
-	instances := p.voWiFiHost().Instances()
-	apps := make([]*runtimehost.Instance, 0, len(instances))
-	for _, app := range instances {
-		apps = append(apps, app)
-	}
-
-	for _, app := range apps {
-		if n == nil {
-			app.SetNotifier(nil)
-			app.SetSMSNotifier(nil)
-			continue
-		}
-		notifier := n
-		app.SetNotifier(func(msg string) {
-			notifier.NotifyRaw(msg)
-		})
-		app.SetSMSNotifier(func(deviceID, sender, content string, ts time.Time) {
-			if withSource, ok := notifier.(SMSSourceNotifier); ok {
-				withSource.NotifySMSWithSource(deviceID, sender, content, "VoWiFi", ts)
-				return
-			}
-			notifier.NotifySMS(deviceID, sender, content, ts)
-		})
-	}
 }
 
 // IsESIMSwitching reports whether the specified device is in an eSIM switch flow.
@@ -661,7 +605,6 @@ func (p *Pool) bindQMIStateIndications(worker *Worker) {
 	worker.QMICore.OnSimStatusChanged(func() {
 		logger.Info("[事件驱动] SIM 状态变化", "device", worker.ID)
 		p.handleSIMStatusEvent(worker.ID, "qmi_sim_status", nil, "")
-		p.wakeDesiredVoWiFiRecoverFromDeviceEvent(worker.ID, "post_switch_qmi_sim_status")
 		go func() {
 			if err := p.applyNetworkPreference(worker); err != nil {
 				logger.Warn("SIM 状态变化后 QMI 网络偏好协调失败", "device", worker.ID, "err", err)
@@ -678,7 +621,6 @@ func (p *Pool) bindMBIMStateIndications(worker *Worker) {
 	worker.MBIMCore.OnSimStatusChanged(func() {
 		logger.Info("[事件驱动] MBIM SIM 状态变化", "device", worker.ID)
 		p.handleSIMStatusEvent(worker.ID, "mbim_sim_status", nil, "")
-		p.wakeDesiredVoWiFiRecoverFromDeviceEvent(worker.ID, "post_switch_mbim_sim_status")
 	})
 }
 
@@ -688,7 +630,6 @@ func (p *Pool) bindMBIMSlotIndications(worker *Worker) {
 	}
 	worker.MBIMCore.OnSlotStatus(func(slotIndex, state uint32) {
 		logger.Debug("收到 MBIM 卡槽状态指示", "device", worker.ID, "slot", slotIndex, "state", state)
-		p.wakeDesiredVoWiFiRecoverFromDeviceEvent(worker.ID, "mbim_slot_status")
 	})
 }
 
@@ -798,134 +739,11 @@ func (p *Pool) handleSIMStatusEvent(deviceID, source string, insertedHint *bool,
 		timer.Stop()
 	}
 	p.simEventTimers[deviceID] = time.AfterFunc(1500*time.Millisecond, func() {
-		p.confirmSIMRemovedAndStopVoWiFi(deviceID, source)
 	})
 	p.simEventMu.Unlock()
 }
 
-var deviceEventRecoverWakeDelay = 500 * time.Millisecond
-
-type deviceEventRecoverWakeup struct {
-	timer   *time.Timer
-	sources map[string]struct{}
-}
-
-func (p *Pool) wakeDesiredVoWiFiRecoverFromDeviceEvent(deviceID, reason string) {
-	if p == nil || p.ctx.Err() != nil {
-		return
-	}
-	deviceID = strings.TrimSpace(deviceID)
-	if deviceID == "" {
-		return
-	}
-	reason = strings.TrimSpace(reason)
-	if reason == "" {
-		reason = vowifiDesiredReconcileReason
-	}
-
-	delay := deviceEventRecoverWakeDelay
-	if delay < 0 {
-		delay = 0
-	}
-	p.deviceEventWakeMu.Lock()
-	if p.deviceEventWakeups == nil {
-		p.deviceEventWakeups = make(map[string]*deviceEventRecoverWakeup)
-	}
-	state := p.deviceEventWakeups[deviceID]
-	if state == nil {
-		state = &deviceEventRecoverWakeup{sources: make(map[string]struct{})}
-		p.deviceEventWakeups[deviceID] = state
-	}
-	state.sources[reason] = struct{}{}
-	if state.timer == nil {
-		state.timer = time.AfterFunc(delay, func() {
-			p.flushDesiredVoWiFiRecoverFromDeviceEvent(deviceID)
-		})
-	} else {
-		state.timer.Reset(delay)
-	}
-	p.deviceEventWakeMu.Unlock()
-}
-
-func (p *Pool) flushDesiredVoWiFiRecoverFromDeviceEvent(deviceID string) {
-	if p == nil || p.ctx.Err() != nil {
-		return
-	}
-	p.deviceEventWakeMu.Lock()
-	state := p.deviceEventWakeups[deviceID]
-	if state == nil {
-		p.deviceEventWakeMu.Unlock()
-		return
-	}
-	delete(p.deviceEventWakeups, deviceID)
-	sources := make([]string, 0, len(state.sources))
-	for source := range state.sources {
-		sources = append(sources, source)
-	}
-	p.deviceEventWakeMu.Unlock()
-	if len(sources) == 0 {
-		return
-	}
-	sort.Strings(sources)
-	reason := sources[0]
-	if len(sources) > 1 {
-		reason = "post_switch_event_wakeup"
-		logger.Debug("VoWiFi 事件唤醒恢复已合并",
-			"device", deviceID,
-			"sources", sources,
-			"reason", reason)
-	}
-
-	p.mu.RLock()
-	worker := p.workers[deviceID]
-	p.mu.RUnlock()
-	shouldRecover := p.shouldReconcileVoWiFiForReason(worker, reason)
-	if !shouldRecover {
-		return
-	}
-	p.scheduleDesiredVoWiFiRecover(deviceID, reason, time.Now())
-}
-
-func (p *Pool) confirmSIMRemovedAndStopVoWiFi(deviceID, source string) {
-	p.simEventMu.Lock()
-	delete(p.simEventTimers, deviceID)
-	p.simEventMu.Unlock()
-
-	if p.IsESIMSwitching(deviceID) {
-		logger.Info("SIM 状态变化发生在 eSIM 切换中，跳过 VoWiFi 自动停止", "device", deviceID, "source", source)
-		return
-	}
-	w := p.GetWorker(deviceID)
-	if w == nil || w.Backend == nil {
-		return
-	}
-
-	baseCtx := p.ctx
-	if baseCtx == nil {
-		baseCtx = context.Background()
-	}
-	ctx, cancel := context.WithTimeout(baseCtx, 3*time.Second)
-	defer cancel()
-	inserted, err := w.Backend.IsSimInserted(ctx)
-	if err != nil {
-		logger.Warn("SIM 拔卡确认失败，跳过 VoWiFi 自动停止", "device", deviceID, "source", source, "err", err)
-		return
-	}
-	if inserted {
-		_ = w.RefreshRuntime(ctx, "sim_status_inserted")
-		return
-	}
-
-	_ = w.RefreshRuntime(ctx, "sim_removed")
-	p.clearDesiredVoWiFiRecoverState(deviceID)
-	if !p.IsVoWiFiActive(deviceID) {
-		return
-	}
-	logger.Warn("检测到 SIM 已拔出，自动停止 VoWiFi", "device", deviceID, "source", source)
-	if err := p.voWiFiHost().Disable(baseCtx, deviceID, "sim_removed", false); err != nil {
-		logger.Warn("SIM 拔出后停止 VoWiFi 失败", "device", deviceID, "source", source, "err", err)
-	}
-}
+type deviceEventRecoverWakeup struct{}
 
 func (p *Pool) bindESIMUIMIndications(worker *Worker) {
 	if worker == nil || worker.QMICore == nil {
@@ -956,7 +774,6 @@ func (p *Pool) bindESIMUIMIndications(worker *Worker) {
 		if src := worker.currentSwitchEventSource(); src != nil {
 			src.PublishRefresh(stage)
 		}
-		p.wakeDesiredVoWiFiRecoverFromDeviceEvent(worker.ID, "post_switch_uim_refresh")
 	})
 
 	worker.QMICore.OnUIMSlotStatus(func(info *qmi.UIMSlotStatus) {
@@ -977,7 +794,6 @@ func (p *Pool) bindESIMUIMIndications(worker *Worker) {
 		if src := worker.currentSwitchEventSource(); src != nil {
 			src.PublishSlotStatus()
 		}
-		p.wakeDesiredVoWiFiRecoverFromDeviceEvent(worker.ID, "post_switch_uim_slot_status")
 	})
 }
 
@@ -1014,12 +830,6 @@ func (p *Pool) RemoveWorker(deviceID string) error {
 		}()
 	}
 
-	// 移除 Worker 时，使当前设备的 VoWiFi 运行态失效，防止未完成的旧启动例程回写状态
-	p.voWiFiHost().InvalidateRuntime(deviceID, "remove_worker")
-	if p.stopVoWiFiAppForTeardown(p.ctx, deviceID, "remove") {
-		logger.Info("设备移除时强制关闭并清理残留的 VoWiFi 实例", "device", deviceID)
-	}
-
 	worker.stopOnce.Do(func() {
 		if worker.stop != nil {
 			close(worker.stop)
@@ -1030,9 +840,6 @@ func (p *Pool) RemoveWorker(deviceID string) error {
 		worker.publicIPRetryTimer.Stop()
 	}
 
-	if worker.Proxy != nil {
-		worker.Proxy.Shutdown()
-	}
 	if worker.ESIMQMITransport != nil {
 		_ = worker.ESIMQMITransport.Stop()
 	}
@@ -1163,7 +970,6 @@ func (p *Pool) refreshIdentityAndApplyCardPolicy(worker *Worker, reason string) 
 			}
 		}
 
-		p.broadcastVoWiFiStateChange(worker.ID)
 	}
 	return result, identityErr
 }
@@ -1189,9 +995,6 @@ func (p *Pool) applyNetworkPreference(worker *Worker) error {
 			if err := worker.EnsureQMIRegistration(p.ctx, true); err != nil {
 				return err
 			}
-		}
-		if p.IsVoWiFiActive(worker.ID) {
-			logger.Info("设备当前处于 VoWiFi 模式，跳过自动连接数据网络", "device", worker.ID)
 			return nil
 		}
 		if nc.IsConnected() {
@@ -1264,24 +1067,6 @@ func (p *Pool) ApplyConfiguredNetwork(deviceID string) error {
 	return p.applyNetworkPreference(worker)
 }
 
-func shouldStartConfiguredQMIWithoutIMEIMatch(cfg config.DeviceConfig, staticQMIIndex StaticQMIDeviceIndex, discoveryAvailable bool) bool {
-	if !requiresQMICore(cfg) {
-		return false
-	}
-	controlPath := strings.TrimSpace(cfg.ControlDevice)
-	if controlPath == "" {
-		controlPath = strings.TrimSpace(cfg.QMIDevice)
-	}
-	if controlPath == "" && strings.TrimSpace(cfg.USBPath) == "" && strings.TrimSpace(cfg.Interface) == "" {
-		return false
-	}
-	if !discoveryAvailable {
-		return controlPath != ""
-	}
-	_, ok := staticQMIIndex.Lookup(controlPath, cfg.USBPath, cfg.Interface)
-	return ok
-}
-
 func (p *Pool) StartAll() error {
 	if p == nil || p.cfg == nil {
 		return nil
@@ -1291,12 +1076,6 @@ func (p *Pool) StartAll() error {
 	devices := append([]config.DeviceConfig(nil), p.cfg.Devices...)
 	for i := range devices {
 		devCfg := devices[i]
-		if !FreeDeviceLimitAllowsConfiguredDevice(devices, devCfg.ID) {
-			logger.Warn("当前版本设备数量限制，跳过启动配置设备",
-				"device", devCfg.ID,
-				"limit", DefaultFreeDeviceLimit)
-			continue
-		}
 		go p.startConfiguredDeviceBootstrap(devCfg, "start_all")
 	}
 	return nil
@@ -1309,8 +1088,6 @@ func (p *Pool) startPoolBackgroundServicesOnce() {
 	p.startOnce.Do(func() {
 		go p.healthCheckLoop()
 		go p.overviewStreamLoop()
-		go p.startVoWiFiDesiredReconcileLoop()
-		p.startInitialDesiredVoWiFiAutoStart(5 * time.Second)
 
 		p.udevWatcher = NewUdevWatcher(p)
 		p.udevWatcher.Start()
@@ -1334,474 +1111,6 @@ func (p *Pool) startConfiguredDeviceBootstrap(devCfg config.DeviceConfig, reason
 	}
 }
 
-func (p *Pool) startAllSynchronousLegacy() error {
-	// 0. 自动发现系统中的模组信息
-	discoveredModems, err := discoverQMIDevicesFn()
-	qmiDiscoveryAvailable := err == nil
-	if err != nil {
-		logger.Warn("模组自动发现失败 (将仅使用配置文件中的静态配置)", "err", err)
-	}
-
-	modemMap := make(map[string]QMIDevice)
-	modemByIMEI := make(map[string]QMIDevice)
-	for i := range discoveredModems {
-		m, imei := resolveDiscoveredQMIDevice(discoveredModems[i], 1600*time.Millisecond, true)
-		discoveredModems[i] = m
-		modemMap[m.NetInterface] = m
-		if imei != "" {
-			modemByIMEI[imei] = m
-		}
-	}
-	staticQMIIndex := BuildStaticQMIDeviceIndex(discoveredModems)
-	compatByIMEI := make(map[string]CompatibleModem)
-	if p.cfg != nil && configuredDevicesNeedCompatibleATDiscovery(p.cfg.Devices) {
-		if compatList, err := DiscoverCompatibleModemsFromQMI(discoveredModems); err == nil {
-			for _, raw := range compatList {
-				d, imei := resolveDiscoveredCompatibleModem(raw, 1200*time.Millisecond)
-				if imei == "" {
-					continue
-				}
-				if _, ok := compatByIMEI[imei]; !ok {
-					compatByIMEI[imei] = d
-				}
-			}
-		}
-	}
-
-	var firstErr error
-	for i := range p.cfg.Devices {
-		// 使用指针以便修改配置
-		devCfg := &p.cfg.Devices[i]
-		if !FreeDeviceLimitAllowsConfiguredDevice(p.cfg.Devices, devCfg.ID) {
-			logger.Warn("当前版本设备数量限制，跳过启动配置设备",
-				"device", devCfg.ID,
-				"limit", DefaultFreeDeviceLimit)
-			continue
-		}
-		var matchedModem *QMIDevice
-
-		if imei := strings.TrimSpace(devCfg.ModemIMEI); imei != "" {
-			if m, ok := modemByIMEI[imei]; ok {
-				matchedModem = &m
-				if devCfg.Interface != m.NetInterface {
-					logger.Info(fmt.Sprintf("[%s] IMEI 匹配到设备端口", devCfg.ID), "imei", imei, "interface", m.NetInterface, "control", m.ControlPath, "at", m.ATPort)
-				}
-				*devCfg = applyQMIManagedAttachment(*devCfg, m)
-			} else {
-				if requiresQMICore(*devCfg) {
-					if !shouldStartConfiguredQMIWithoutIMEIMatch(*devCfg, staticQMIIndex, qmiDiscoveryAvailable) {
-						logger.Warn(fmt.Sprintf("[%s] 未找到匹配 IMEI 的设备，跳过启动", devCfg.ID), "imei", imei)
-						continue
-					}
-					logger.Warn(fmt.Sprintf("[%s] 未找到匹配 IMEI 的设备，将按静态 QMI 路径尝试启动", devCfg.ID),
-						"imei", imei,
-						"control_device", devCfg.ControlDevice,
-						"interface", devCfg.Interface,
-						"usb_path", devCfg.USBPath)
-				} else {
-					compat, ok := compatByIMEI[imei]
-					if !ok {
-						if strings.TrimSpace(devCfg.ATPort) == "" {
-							logger.Warn(fmt.Sprintf("[%s] 未找到匹配 IMEI 的 AT-only 设备，跳过启动", devCfg.ID), "imei", imei)
-							continue
-						}
-					} else {
-						if devCfg.Interface == "" {
-							devCfg.Interface = compat.NetInterface
-						}
-						if devCfg.ATPort == "" {
-							devCfg.ATPort = compat.ATPort
-							devCfg.ManagePort = compat.ATPort
-						}
-						if devCfg.AudioDevice == "" && compat.AudioDevice != "" {
-							devCfg.AudioDevice = compat.AudioDevice
-						}
-					}
-				}
-			}
-		}
-
-		if matchedModem == nil {
-			if m, ok := staticQMIIndex.Lookup(devCfg.ControlDevice, devCfg.USBPath, devCfg.Interface); ok {
-				matchedModem = &m
-				if devCfg.Interface == "" {
-					devCfg.Interface = m.NetInterface
-				}
-				if devCfg.ControlDevice == "" {
-					devCfg.ControlDevice = m.ControlPath
-					devCfg.QMIDevice = m.ControlPath
-				}
-				if devCfg.USBPath == "" {
-					devCfg.USBPath = m.USBPath
-				}
-				if devCfg.ATPort == "" {
-					devCfg.ATPort = m.ATPort
-					devCfg.ManagePort = m.ATPort
-				}
-				if devCfg.AudioDevice == "" && m.AudioDevice != "" {
-					devCfg.AudioDevice = m.AudioDevice
-				}
-			}
-		}
-
-		// 尝试根据网卡接口名称 (Interface) 自动补全配置
-		if m, ok := modemMap[devCfg.Interface]; ok {
-			matchedModem = &m
-			logger.Info(fmt.Sprintf("[%s] 自动匹配到模组硬件信息", devCfg.ID), "interface", devCfg.Interface)
-
-			// 自动填充 AT 端口 (ManagePort / ATPort)
-			if devCfg.ATPort == "" {
-				devCfg.ATPort = m.ATPort
-				// 同时更新 ManagePort 保持兼容
-				devCfg.ManagePort = m.ATPort
-				logger.Info(fmt.Sprintf("[%s]   -> Auto-Config AT Port", devCfg.ID), "val", m.ATPort)
-			}
-
-			// 自动填充 QMI 设备 (ControlDevice)
-			if devCfg.ControlDevice == "" {
-				devCfg.ControlDevice = m.ControlPath
-				devCfg.QMIDevice = m.ControlPath // 兼容旧字段
-				logger.Info(fmt.Sprintf("[%s]   -> Auto-Config Control Device", devCfg.ID), "val", m.ControlPath)
-			}
-
-			// 自动填充 USB Audio 声卡
-			if devCfg.AudioDevice == "" && m.AudioDevice != "" {
-				devCfg.AudioDevice = m.AudioDevice
-				logger.Info(fmt.Sprintf("[%s]   -> Auto-Config Audio Device", devCfg.ID), "val", m.AudioDevice)
-			}
-		}
-
-		// ESIMTransport 现在由 device_backend 推导，无需独立校验
-
-		// 1. 初始化 Modem
-		m, err := modem.New(*devCfg)
-		if err != nil {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("初始化 Modem %s 失败: %w", devCfg.ID, err)
-			}
-			logger.Error(fmt.Sprintf("[%s] 初始化 Modem 失败", devCfg.ID), "err", err)
-			continue
-		}
-
-		// 2. 初始化 QMI Core（传入匹配到的 modem 设备信息）
-		// 核心变更：QMI 模式下无条件创建 qmicore.Manager 作为底盘
-		bMode := resolvedBackendMode(*devCfg)
-		isQMIReq := requiresQMICore(*devCfg)
-		if p.lifecycle != nil && isQMIReq {
-			p.lifecycle.BeginRecovery(devCfg.ID, LifecyclePhaseWorkerStarting, "start_all", qmiLifecycleRecoveryTTL)
-		}
-
-		var qmiCore *qmicore.Manager
-		if isQMIReq {
-			var managerDevice *qmimanager.ModemDevice
-			if matchedModem != nil {
-				md := matchedModem.ToQMIManagerDevice()
-				managerDevice = &md
-			}
-			qmiCore = qmicore.New(*devCfg, managerDevice)
-		}
-		var mbimCore *mbimcore.Manager
-		var mbimSource backend.MBIMSource
-		if requiresMBIMCore(*devCfg) {
-			mbimCore = mbimcore.New(devCfg.ControlDevice, config.NormalizeMBIMTransport(devCfg.MBIMTransport))
-			mbimCore.SetDataConfig(mbimcore.DataConfig{APN: devCfg.APN, Interface: devCfg.Interface, IPVersion: devCfg.IPVersion})
-			if err := mbimCore.Open(p.ctx); err != nil {
-				if firstErr == nil {
-					firstErr = fmt.Errorf("设备 %s 的 MBIM 控制通道打开失败: %w", devCfg.ID, err)
-				}
-				logger.Error(fmt.Sprintf("[%s] MBIM 控制通道打开失败", devCfg.ID), "err", err)
-				m.Stop()
-				continue
-			}
-			mbimSource = mbimCore
-		}
-
-		qmiTransport, qmiTransportLifecycle, err := buildESIMQMITransport(*devCfg, qmiCore)
-		if err != nil {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("设备 %s 的 eSIM 传输配置无效: %w", devCfg.ID, err)
-			}
-			logger.Error(fmt.Sprintf("[%s] eSIM transport 配置无效", devCfg.ID), "err", err)
-			if mbimCore != nil {
-				_ = mbimCore.Close()
-			}
-			m.Stop()
-			if qmiCore != nil {
-				qmiCore.Stop()
-			}
-			continue
-		}
-		if qmiTransport == nil && mbimCore != nil {
-			qmiTransport = buildESIMMBIMTransport(mbimCore)
-		}
-
-		w := &Worker{
-			ID:               devCfg.ID,
-			Config:           *devCfg,
-			Modem:            m,
-			QMICore:          qmiCore,
-			MBIMCore:         mbimCore,
-			ESIMQMITransport: qmiTransportLifecycle,
-			APDUArbiter:      apduarbiter.New(devCfg.ID, apduarbiter.Options{MaxLeaseHold: 10 * time.Minute, MaxSessions: 3, MaxQMITransports: 3}),
-			Pool:             p,
-			stop:             make(chan struct{}),
-			reassembler:      smscodec.NewReassembler(),
-		}
-		p.assignWorkerGeneration(w)
-		configureWorkerAPDUArbiter(w, qmiTransport)
-
-		be, beErr := newWorkerBackendStrict(devCfg.ID, bMode, devCfg.ControlDevice, m, qmiCore, mbimSource)
-		if beErr != nil {
-			if firstErr == nil {
-				firstErr = beErr
-			}
-			logger.Error(fmt.Sprintf("[%s] 后端初始化失败", devCfg.ID), "backend", bMode, "err", beErr)
-			if qmiTransportLifecycle != nil {
-				_ = qmiTransportLifecycle.Stop()
-			}
-			if mbimCore != nil {
-				_ = mbimCore.Close()
-			}
-			if qmiCore != nil {
-				qmiCore.Stop()
-			}
-			m.Stop()
-			continue
-		}
-		w.Backend = be
-		onBeforeSwitch, onAfterSwitch, onSwitchFailed, onSwitchDegraded, onSwitchPhase := p.newESIMSwitchCallbacks(devCfg.ID)
-		w.EsimMgr, err = newESIMManagerForWorker(w, qmiTransport, onBeforeSwitch, onAfterSwitch, onSwitchFailed, onSwitchDegraded, onSwitchPhase)
-		if err != nil {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("设备 %s 的 eSIM 管理器初始化失败: %w", devCfg.ID, err)
-			}
-			logger.Error(fmt.Sprintf("[%s] eSIM 管理器初始化失败", devCfg.ID), "err", err)
-			if qmiTransportLifecycle != nil {
-				_ = qmiTransportLifecycle.Stop()
-			}
-			if mbimCore != nil {
-				_ = mbimCore.Close()
-			}
-			if qmiCore != nil {
-				qmiCore.Stop()
-			}
-			m.Stop()
-			continue
-		}
-		p.bindESIMUIMIndications(w)
-
-		if p.sipRegistrar != nil {
-			w.CSCallMgr = newCSCallManagerForWorker(w, p.sipRegistrar)
-			if w.CSCallMgr != nil {
-				logger.Info(fmt.Sprintf("[%s] 已启用 CS 域语音桥接 (AudioDev: %s)", w.ID, devCfg.AudioDevice))
-			}
-		}
-
-		if qmiCore != nil {
-			qmiCore.SetOnConnect(func() {
-				p.markQMIControlRecovered(w, "qmi_connected")
-				p.refreshIPs(w, true)
-				p.notifyDataConnected(w.ID)
-			})
-			p.bindQMIHealthIndications(w)
-		}
-		if mbimCore != nil {
-			p.bindMBIMStateIndications(w)
-			p.bindMBIMSlotIndications(w)
-			p.bindMBIMHealthIndications(w)
-		}
-
-		if backendUsesATRuntime(bMode) {
-			// 注册掉线回调：串口断开后延迟等待模块重启，然后自动重连
-			m.SetOnDisconnectWithReason(func(reason string) {
-				devID := w.ID
-				if strings.TrimSpace(reason) == "" {
-					reason = "modem_disconnect"
-				}
-				logger.Warn(fmt.Sprintf("[%s] 检测到模块掉线，将进入重启恢复扫描", devID), "reason", reason)
-				p.scheduleATDisconnectRecovery(devID, reason)
-			})
-			p.bindModemReadyIndications(w)
-		}
-
-		// 4. 按后端模式分叉短信注册逻辑（三模完全隔离）
-		if bMode == backend.BackendQMI {
-			// QMI 模式：WMS EventNewSMS → handleNewSMSQMI → processSMS
-			w.smsMode = smsModeQMI
-			if smsCore := w.smsQMICore(); smsCore != nil {
-				smsCore.OnNewSMSWithStorage(func(storage uint8, index uint32) {
-					logger.Info(fmt.Sprintf("[%s] 收到 QMI 短信通知", w.ID), "index", index, "storage", storage)
-					w.handleNewSMSQMI(storage, index)
-				})
-				smsCore.OnNewSMSRaw(func(info qmicore.RawSMSIndication) {
-					logger.Info(fmt.Sprintf("[%s] 收到 QMI 原始短信通知", w.ID),
-						"pdu_len", len(info.PDU),
-						"ack_required", info.AckRequired,
-						"transaction_id", info.TransactionID,
-						"format", info.Format,
-					)
-					w.handleNewSMSRawQMI(info)
-				})
-			}
-			// 纯 QMI 模式不监听 AT URC；AT 口仅保留给人工 AT 终端。
-		} else if bMode == backend.BackendMBIM {
-			// MBIM 模式：SMS_READ indication → handleNewSMSMBIM → processSMS
-			w.smsMode = smsModeMBIM
-			if mbimCore != nil {
-				mbimCore.OnNewSMS(func() {
-					logger.Info(fmt.Sprintf("[%s] 收到 MBIM 短信通知", w.ID))
-					w.handleNewSMSMBIM("indication")
-				})
-			}
-			// 纯 MBIM 模式不监听 AT URC；短信通过 MBIM SMS service 接收。
-		} else {
-			// AT 模式：+CMTI URC → AT+CMGR 读取 → smsCallback → processSMS
-			w.smsMode = smsModeAT
-			m.SetNewSMSHandler(nil)    // 不接管，让 modem.Manager 内部原生处理
-			m.SetDisableURCRead(false) // 确保 AT URC 自动读取启用
-			m.SetSIMStatusHandler(func(inserted *bool, state string) {
-				p.handleSIMStatusEvent(w.ID, "at_urc", inserted, state)
-			})
-			m.SetSMSCallback(func(sender, content string, timestamp time.Time) {
-				w.processSMS(sender, content, timestamp)
-			})
-		}
-		logger.Info(fmt.Sprintf("[%s] 短信模式已配置", w.ID), "sms_mode", w.smsMode.String(), "backend", bMode)
-
-		// 5. 启动 Modem 管理器
-		if err := m.Start(); err != nil {
-			logger.Error(fmt.Sprintf("[%s] 启动 Modem 管理器失败", devCfg.ID), "err", err)
-		}
-
-		if !m.WaitReady(5 * time.Second) {
-			logger.Warn(fmt.Sprintf("[%s] Modem 初始化超时，继续启动 QMI Core", devCfg.ID))
-		}
-		if qmiCore == nil {
-			cleanupWorkerStartupSIMAuthLogicalChannels(w)
-		}
-
-		// 6. 启动 QMI Core
-		qmiWorkerRegistered := false
-		if qmiCore != nil {
-			if err := p.registerWorkerStarting(w); err != nil {
-				if firstErr == nil {
-					firstErr = fmt.Errorf("注册 QMI Worker %s 失败: %w", devCfg.ID, err)
-				}
-				if qmiTransportLifecycle != nil {
-					_ = qmiTransportLifecycle.Stop()
-				}
-				if mbimCore != nil {
-					_ = mbimCore.Close()
-				}
-				qmiCore.Stop()
-				m.Stop()
-				continue
-			}
-			qmiWorkerRegistered = true
-			// 数据面统一按 network_enabled 显式连接，这里只启动 QMI 控制面。
-			if err := p.startQMICoreWithStartupBudget(w, "qmi_start_core"); err != nil {
-				logger.Warn(fmt.Sprintf("[%s] 启动 QMI Core 失败", devCfg.ID), "err", err)
-				if firstErr == nil {
-					firstErr = fmt.Errorf("设备 %s 启动 QMI Core 失败: %w", devCfg.ID, err)
-				}
-				if qmiTransportLifecycle != nil {
-					_ = qmiTransportLifecycle.Stop()
-				}
-				p.removeWorkerRegistrationIfCurrent(w)
-				if qmiCore != nil {
-					qmiCore.Stop()
-				}
-				m.Stop()
-				continue
-			}
-		}
-
-		if !qmiWorkerRegistered {
-			p.workers[devCfg.ID] = w
-		}
-		w.uimIndicationsReady.Store(true)
-		p.scheduleATRadioWarmup(w, "startup")
-
-		go func(worker *Worker) {
-			select {
-			case <-p.ctx.Done():
-				return
-			case <-worker.stop:
-				return
-			case <-time.After(1 * time.Second):
-			}
-			_ = worker.RefreshRuntime(nil, "startup_warm_runtime")
-		}(w)
-
-		// 7. 同步设备/SIM 信息到数据库 (异步，等待 initModem 完成)
-		go func(worker *Worker) {
-			select {
-			case <-p.ctx.Done():
-				return
-			case <-worker.stop:
-				return
-			case <-time.After(3 * time.Second):
-			}
-			if err := p.applyNetworkPreference(worker); err != nil {
-				logger.Warn(fmt.Sprintf("[%s] 延迟自动应用网络偏好失败", worker.ID), "err", err)
-			}
-			_ = worker.RefreshRuntime(nil, "startup_post_apply")
-			_ = worker.RefreshIdentityLive(nil, "startup_post_apply")
-			p.PersistRuntimeState(worker)
-			p.PersistIdentityState(worker)
-			p.refreshIPs(worker, true)
-		}(w)
-
-		// 短信定时轮询（按 smsMode 分支）
-		go func(worker *Worker) {
-			ticker := time.NewTicker(60 * time.Second)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-p.ctx.Done():
-					return
-				case <-worker.stop:
-					return
-				case <-ticker.C:
-					switch worker.smsMode {
-					case smsModeAT:
-						// AT 模式：完全依赖 URC，不轮询
-					case smsModeQMI:
-						// QMI 模式：只走 QMI 轮询，不 fallback AT
-						if worker.QMICore != nil {
-							if err := worker.CheckAllSMSQMI(); err != nil {
-								logger.Warn(fmt.Sprintf("[%s] QMI 轮询短信失败", worker.ID), "err", err)
-							}
-						}
-					case smsModeMBIM:
-						worker.handleNewSMSMBIM("poll")
-					case smsModeVoWiFi:
-						// VoWiFi 模式：完全跳过，IMS 接管
-					}
-				}
-			}
-		}(w)
-	}
-
-	// 启动健康检查定时任务
-	go p.healthCheckLoop()
-
-	// 启动 5 秒级流式前台驻留监听引擎
-	go p.overviewStreamLoop()
-
-	// 启动 VoWiFi 目标态恢复协调器：配置仍希望开启时，低频拉回丢失的实例。
-	go p.startVoWiFiDesiredReconcileLoop()
-
-	// 根据配置自动启动 VoWiFi：只提交期望态，不在全局启动循环里等待单设备生命周期完成。
-	p.startInitialDesiredVoWiFiAutoStart(5 * time.Second)
-
-	// 启动 udev 热插拔监听器
-	p.udevWatcher = NewUdevWatcher(p)
-	p.udevWatcher.Start()
-
-	return firstErr
-}
-
 func (p *Pool) bindModemReadyIndications(worker *Worker) {
 	if worker == nil || worker.Modem == nil {
 		return
@@ -1816,7 +1125,6 @@ func (p *Pool) bindModemReadyIndications(worker *Worker) {
 				return
 			case <-ch:
 				logger.Info("[事件驱动] Modem RDY（切卡补刷新已禁用）", "device", w.ID)
-				p.wakeDesiredVoWiFiRecoverFromDeviceEvent(w.ID, "post_switch_modem_ready")
 			}
 		}
 	}(worker)
@@ -1960,12 +1268,6 @@ func (p *Pool) rescanAndReconnect(opts rescanReconnectOptions) error {
 
 	for _, pair := range resolved.Matched {
 		md := pair.Config
-		if !FreeDeviceLimitAllowsConfiguredDevice(managed, md.ID) {
-			logger.Warn("当前版本设备数量限制，跳过启动配置设备",
-				"device", md.ID,
-				"limit", DefaultFreeDeviceLimit)
-			continue
-		}
 
 		hw := pair.Hardware
 		useQMI := requiresQMICore(md)
@@ -2006,12 +1308,6 @@ func (p *Pool) rescanAndReconnect(opts rescanReconnectOptions) error {
 			}
 			if _, err := p.AddWorkerFromConfig(cfg); err != nil {
 				logger.Warn("自动启动设备失败", "device", md.ID, "err", err)
-			} else if md.VoWiFiEnabled {
-				go func(deviceID string) {
-					if err := p.enableVoWiFiWhenReady(deviceID, 5*time.Second, "device_recovery"); err != nil {
-						logger.Warn("设备恢复后自动重启 VoWiFi 失败", "device", deviceID, "err", err)
-					}
-				}(md.ID)
 			}
 		} else if !worker.IsDeviceHealthy() {
 			if !opts.allowWorkerMutation(md.ID) {
@@ -2022,7 +1318,6 @@ func (p *Pool) rescanAndReconnect(opts rescanReconnectOptions) error {
 			}
 			// Worker 存在但不健康，需要重建
 			logger.Info("检测到设备恢复，尝试重新初始化", "device", md.ID, "imei", md.ModemIMEI)
-			p.teardownVoWiFiForReconnect(md.ID)
 			if p.lifecycle != nil {
 				p.lifecycle.BeginRecovery(md.ID, LifecyclePhaseWorkerStarting, "rescan_reinitialize", qmiLifecycleRecoveryTTL)
 			}
@@ -2046,12 +1341,6 @@ func (p *Pool) rescanAndReconnect(opts rescanReconnectOptions) error {
 			}
 			if _, err := p.AddWorkerFromConfig(cfg); err != nil {
 				logger.Warn("重新初始化设备失败", "device", md.ID, "err", err)
-			} else if md.VoWiFiEnabled {
-				go func(deviceID string) {
-					if err := p.enableVoWiFiWhenReady(deviceID, 5*time.Second, "device_recovery"); err != nil {
-						logger.Warn("设备恢复后自动重启 VoWiFi 失败", "device", deviceID, "err", err)
-					}
-				}(md.ID)
 			}
 		} else {
 			// Worker 存在且标记为健康
@@ -2082,7 +1371,6 @@ func (p *Pool) rescanAndReconnect(opts rescanReconnectOptions) error {
 						"new_interface", nextCfg.Interface,
 						"old_usb_path", worker.Config.USBPath,
 						"new_usb_path", nextCfg.USBPath)
-					p.teardownVoWiFiForReconnect(md.ID)
 					if p.lifecycle != nil {
 						p.lifecycle.BeginRecovery(md.ID, LifecyclePhaseWorkerStarting, "rescan_qmi_path_change", qmiLifecycleRecoveryTTL)
 					}
@@ -2092,12 +1380,6 @@ func (p *Pool) rescanAndReconnect(opts rescanReconnectOptions) error {
 					}
 					if _, err := p.AddWorkerFromConfig(nextCfg); err != nil {
 						logger.Warn("使用新 QMI 路径重建 Worker 失败", "device", md.ID, "err", err)
-					} else if md.VoWiFiEnabled {
-						go func(deviceID string) {
-							if err := p.enableVoWiFiWhenReady(deviceID, 5*time.Second, "device_qmi_path_change"); err != nil {
-								logger.Warn("QMI 路径变化后自动重启 VoWiFi 失败", "device", deviceID, "err", err)
-							}
-						}(md.ID)
 					}
 					continue
 				}
@@ -2106,7 +1388,6 @@ func (p *Pool) rescanAndReconnect(opts rescanReconnectOptions) error {
 			if currentATPort != "" && currentATPort != worker.Config.ATPort {
 				logger.Info("检测到设备端口变化，重建 Worker",
 					"device", md.ID, "old_port", worker.Config.ATPort, "new_port", currentATPort)
-				p.teardownVoWiFiForReconnect(md.ID)
 				if p.lifecycle != nil {
 					p.lifecycle.BeginRecovery(md.ID, LifecyclePhaseWorkerStarting, "rescan_port_change", qmiLifecycleRecoveryTTL)
 				}
@@ -2125,27 +1406,17 @@ func (p *Pool) rescanAndReconnect(opts rescanReconnectOptions) error {
 				}
 				if _, err := p.AddWorkerFromConfig(cfg); err != nil {
 					logger.Warn("端口变化后重建设备失败", "device", md.ID, "err", err)
-				} else if md.VoWiFiEnabled {
-					go func(deviceID string) {
-						if err := p.enableVoWiFiWhenReady(deviceID, 5*time.Second, "device_port_change"); err != nil {
-							logger.Warn("端口变化后自动重启 VoWiFi 失败", "device", deviceID, "err", err)
-						}
-					}(md.ID)
 				}
 			}
 		}
 	}
 
 	for _, md := range resolved.Offline {
-		if !FreeDeviceLimitAllowsConfiguredDevice(managed, md.ID) {
-			continue
-		}
 		worker := p.GetWorker(md.ID)
 		if worker != nil {
 			logger.Info("检测到设备离线，清理 Worker 以便后续重建",
 				"device", md.ID, "imei", md.ModemIMEI,
 				"was_healthy", worker.IsDeviceHealthy())
-			p.teardownVoWiFiForReconnect(md.ID)
 			if p.lifecycle != nil {
 				p.lifecycle.BeginRecovery(md.ID, LifecyclePhaseUSBWait, "rescan_device_missing", qmiLifecycleRecoveryTTL)
 			}
@@ -2177,15 +1448,6 @@ func (p *Pool) RebuildWorker(deviceID string) error {
 	if err != nil || cfg == nil {
 		return fmt.Errorf("读取设备 %s 配置失败: %w", deviceID, err)
 	}
-	if !FreeDeviceLimitAllowsConfiguredDevice(config.ListDevices(), cfg.ID) {
-		return fmt.Errorf("%s", FreeDeviceWorkerLimitMessage())
-	}
-
-	// 先停止 VoWiFi（如有），并让任何正在启动中的旧实例失效。
-	p.voWiFiHost().InvalidateRuntime(deviceID, "rebuild_worker")
-	if err := p.DisableVoWiFi(deviceID); err != nil {
-		logger.Warn("RebuildWorker 停止旧 VoWiFi 失败", "device", deviceID, "err", err)
-	}
 
 	// 移除旧 Worker
 	if err := p.RemoveWorker(deviceID); err != nil {
@@ -2208,15 +1470,6 @@ func (p *Pool) RebuildWorker(deviceID string) error {
 
 	if err := p.waitWorkerReady(deviceID, 3*time.Second); err != nil {
 		logger.Warn("RebuildWorker 后等待设备恢复健康超时", "device", deviceID, "err", err)
-	}
-
-	// 如果配置了 VoWiFi 自动启动
-	if cfg.VoWiFiEnabled {
-		go func() {
-			if err := p.enableVoWiFiWhenReady(deviceID, 5*time.Second, "rebuild_worker"); err != nil {
-				logger.Error("RebuildWorker 后 VoWiFi 启动失败", "device", deviceID, "err", err)
-			}
-		}()
 	}
 
 	logger.Info("Worker 重建完成", "device", deviceID)
@@ -2302,8 +1555,6 @@ func (p *Pool) SetWorkerNetworkPolicy(deviceID string, networkEnabled bool, ipVe
 	}
 	w.Config.NetworkEnabled = networkEnabled
 	if networkEnabled {
-		// 开网络与 VoWiFi/飞行互斥（与后端落库互斥保持一致），否则概览仍显示旧模式面板。
-		w.Config.VoWiFiEnabled = false
 		w.Config.AirplaneEnabled = false
 	}
 	if strings.TrimSpace(ipVersion) != "" {
@@ -2317,20 +1568,6 @@ func (p *Pool) SetWorkerNetworkPolicy(deviceID string, networkEnabled bool, ipVe
 // 开 VoWiFi ⇒ airplane=true（射频被 VoWiFi 等效接管）、network=false；
 // 关 VoWiFi 仅清 vowifi，不在此清 airplane——airplane 反映用户的纯飞行意图，
 // 由随后的 resolveAndApplyPolicy 按当前卡策略重投影回退（之前飞行回飞行，否则回在线）。
-func (p *Pool) SetWorkerVoWiFiPolicy(deviceID string, vowifiEnabled bool) *Worker {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	w := p.workers[deviceID]
-	if w == nil {
-		return nil
-	}
-	w.Config.VoWiFiEnabled = vowifiEnabled
-	if vowifiEnabled {
-		w.Config.AirplaneEnabled = true
-		w.Config.NetworkEnabled = false
-	}
-	return w
-}
 
 // SetWorkerAirplanePolicy 同步 worker 运行时的飞行(airplane)策略字段。
 // 开飞行 ⇒ vowifi=false、network=false（纯飞行互斥）；关飞行仅清 airplane。
@@ -2343,7 +1580,6 @@ func (p *Pool) SetWorkerAirplanePolicy(deviceID string, airplaneEnabled bool) *W
 	}
 	w.Config.AirplaneEnabled = airplaneEnabled
 	if airplaneEnabled {
-		w.Config.VoWiFiEnabled = false
 		w.Config.NetworkEnabled = false
 	}
 	return w
@@ -2365,12 +1601,6 @@ func (p *Pool) UpdateWorkerConfig(id string, cfg config.DeviceConfig, applyAll b
 
 	p.resolveAndApplyPolicy(w, "config_update")
 	return true
-}
-
-func newESIMIMEIProvider(w *Worker) func(ctx context.Context) (string, error) {
-	return func(ctx context.Context) (string, error) {
-		return w.getIMEIWithContext(ctx), nil
-	}
 }
 
 func configureWorkerAPDUArbiter(w *Worker, qmiTransport esim.QMIAPDUTransport) {
@@ -2613,13 +1843,6 @@ func (w *Worker) RotateWithNotify() (oldIP, newIP string, err error) {
 					_ = db.UpdateDeviceIPsV6(imei, publicV4, publicV6, internalIP, internalIPv6)
 				}
 
-				if app := w.Pool.voWiFiHost().Instance(w.ID); app != nil {
-					logger.Info(fmt.Sprintf("[%s] 指令级 IP 轮换完毕，正平滑触发底层 MOBIKE 漫游", w.ID), "new_ip", newIP)
-					if err := app.TriggerMOBIKE(oldIP, newIP); err != nil {
-						logger.Warn(fmt.Sprintf("[%s] MOBIKE 漫游触发失败", w.ID), "err", err)
-					}
-				}
-
 				return oldIP, newIP, nil
 			}
 			logger.Debug(fmt.Sprintf("[%s] 探测外网 IP 中...", w.ID), "try", j+1)
@@ -2668,13 +1891,6 @@ func (p *Pool) NotifyIPChanged(id, oldIP, newIP string, duration time.Duration) 
 }
 
 func (p *Pool) Shutdown() error {
-	// 先关闭所有 VoWiFi 应用实例（确保 XFRMI 接口和 SA/SP 被清理）
-	devIDs := p.voWiFiHost().InstanceIDs()
-	for _, devID := range devIDs {
-		logger.Info("正在关闭 VoWiFi", "device", devID)
-		_ = p.stopVoWiFiAppForTeardown(context.Background(), devID, "shutdown")
-	}
-
 	p.cancel()
 	var wg sync.WaitGroup
 	p.mu.RLock()
@@ -2682,10 +1898,6 @@ func (p *Pool) Shutdown() error {
 		wg.Add(1)
 		go func(worker *Worker) {
 			defer wg.Done()
-			if worker.Proxy != nil {
-				logger.Info(fmt.Sprintf("[%s] 正在关闭代理服务器", worker.ID))
-				worker.Proxy.Shutdown()
-			}
 		}(w)
 
 		// 停止 QMI Core

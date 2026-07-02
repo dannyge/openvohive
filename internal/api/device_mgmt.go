@@ -11,17 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/apduarbiter"
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/db"
-	"github.com/iniwex5/vohive/internal/device"
-	"github.com/iniwex5/vohive/internal/e911"
-	"github.com/iniwex5/vohive/internal/esim"
-	"github.com/iniwex5/vohive/internal/modem"
-	proxytraffic "github.com/iniwex5/vohive/internal/proxy/traffic"
-	"github.com/iniwex5/vohive/pkg/logger"
-	"github.com/iniwex5/vowifi-go/runtimehost"
+	"github.com/openvohive/openvohive/internal/apduarbiter"
+	"github.com/openvohive/openvohive/internal/backend"
+	"github.com/openvohive/openvohive/internal/config"
+	"github.com/openvohive/openvohive/internal/db"
+	"github.com/openvohive/openvohive/internal/device"
+	"github.com/openvohive/openvohive/internal/esim"
+	"github.com/openvohive/openvohive/internal/modem"
+	"github.com/openvohive/openvohive/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 )
@@ -32,7 +29,6 @@ type deviceConfigDTO struct {
 	ModemIMEI             string  `json:"modem_imei"`
 	USBPath               string  `json:"usb_path"`
 	ATPort                string  `json:"at_port"`
-	ProxyPort             int     `json:"proxy_port"`
 	Interface             string  `json:"interface"`
 	ControlDevice         string  `json:"control_device,omitempty"`
 	QMIUseProxy           *bool   `json:"qmi_use_proxy,omitempty"`
@@ -50,7 +46,6 @@ type deviceConfigDTO struct {
 	APN                   string  `json:"apn,omitempty"`
 	IPVersion             string  `json:"ip_version,omitempty"`
 	NetworkEnabled        bool    `json:"network_enabled"`
-	VoWiFiEnabled         bool    `json:"vowifi_enabled"`
 	DeviceBackend         string  `json:"device_backend,omitempty"`
 }
 
@@ -61,7 +56,6 @@ func deviceConfigToDTO(c config.DeviceConfig) deviceConfigDTO {
 		ModemIMEI:             c.ModemIMEI,
 		USBPath:               c.USBPath,
 		ATPort:                c.ATPort,
-		ProxyPort:             c.ProxyPort,
 		Interface:             c.Interface,
 		ControlDevice:         c.ControlDevice,
 		QMIUseProxy:           boolPtr(c.QMIUseProxy),
@@ -79,7 +73,6 @@ func deviceConfigToDTO(c config.DeviceConfig) deviceConfigDTO {
 		APN:                   c.APN,
 		IPVersion:             c.IPVersion,
 		NetworkEnabled:        c.NetworkEnabled,
-		VoWiFiEnabled:         c.VoWiFiEnabled,
 		DeviceBackend:         c.DeviceBackend,
 	}
 }
@@ -116,7 +109,6 @@ func deviceConfigFromDTOWithBase(d deviceConfigDTO, base *config.DeviceConfig) c
 		ModemIMEI:             strings.TrimSpace(d.ModemIMEI),
 		USBPath:               strings.TrimSpace(d.USBPath),
 		ATPort:                strings.TrimSpace(d.ATPort),
-		ProxyPort:             d.ProxyPort,
 		Interface:             strings.TrimSpace(d.Interface),
 		ControlDevice:         strings.TrimSpace(d.ControlDevice),
 		QMIUseProxy:           qmiUseProxy,
@@ -134,7 +126,6 @@ func deviceConfigFromDTOWithBase(d deviceConfigDTO, base *config.DeviceConfig) c
 		APN:                   strings.TrimSpace(d.APN),
 		IPVersion:             strings.TrimSpace(d.IPVersion),
 		NetworkEnabled:        d.NetworkEnabled,
-		VoWiFiEnabled:         d.VoWiFiEnabled,
 		DeviceBackend:         d.DeviceBackend,
 	}
 }
@@ -145,39 +136,6 @@ func boolPtr(v bool) *bool {
 
 func stringPtr(v string) *string {
 	return &v
-}
-
-type deviceMgmtOverviewItem struct {
-	ID                     string             `json:"id"`
-	Name                   string             `json:"name"`
-	Running                bool               `json:"running"`
-	Healthy                bool               `json:"healthy"`
-	ControlOnline          bool               `json:"control_online"`
-	PhysicalPresent        bool               `json:"physical_present"`
-	WorkerRunning          bool               `json:"worker_running"`
-	DataConnected          bool               `json:"data_connected"`
-	RadioRegistered        bool               `json:"radio_registered"`
-	LifecyclePhase         string             `json:"lifecycle_phase"`
-	LifecycleReason        string             `json:"lifecycle_reason,omitempty"`
-	PrivateIP              string             `json:"private_ip,omitempty"`
-	PrivateIPv6            string             `json:"private_ipv6,omitempty"`
-	PublicIP               string             `json:"public_ip"`
-	PublicIPv6             string             `json:"public_ipv6,omitempty"`
-	Config                 *deviceConfigDTO   `json:"config,omitempty"`
-	Modem                  modem.DeviceStatus `json:"modem"`
-	Traffic                map[string]string  `json:"traffic,omitempty"`
-	TrafficRaw             map[string]int64   `json:"traffic_raw,omitempty"`
-	TrafficMeta            *deviceTrafficMeta `json:"traffic_meta,omitempty"`
-	BackendMode            string             `json:"backend_mode,omitempty"`
-	NetworkConnected       bool               `json:"network_connected"`
-	RegistrationStateLabel string             `json:"registration_state_label"`
-	// Interface / ControlDevice / ATPort / USBPath 是 worker 运行时解析出的当前路径
-	// (零路径持久化后不入库),前端据此显示与判定 QMI 后端可用性、流量接口,
-	// 不再依赖持久化 config 的路径字段。
-	Interface     string `json:"interface,omitempty"`
-	ControlDevice string `json:"control_device,omitempty"`
-	ATPort        string `json:"at_port,omitempty"`
-	USBPath       string `json:"usb_path,omitempty"`
 }
 
 func modemSummaryStatus(status modem.DeviceStatus) modem.DeviceStatus {
@@ -206,17 +164,6 @@ func registrationStateLabel(regStatus int) string {
 // 而 interface / control_device / at_port 等运行时路径取自 worker 内存 config。
 // 零路径持久化后持久化侧已不含这些路径,必须用运行时真实值展示,否则在线设备会被
 // 误判为“未探测到数据控制端”、流量按空接口名也统计不到。
-// cardPolicyVoWiFiEnabled 从卡策略读取用户意图，ICCID 为空或查不到时降级用 fallback。
-func cardPolicyVoWiFiEnabled(iccid string, fallback bool) bool {
-	if iccid == "" {
-		return fallback
-	}
-	pol, err := db.GetCardPolicy(iccid)
-	if err != nil {
-		return fallback
-	}
-	return pol.VoWiFiEnabled
-}
 
 func overviewDisplayConfig(runtime, persisted config.DeviceConfig, hasPersisted bool) config.DeviceConfig {
 	if !hasPersisted {
@@ -230,10 +177,8 @@ func overviewDisplayConfig(runtime, persisted config.DeviceConfig, hasPersisted 
 	cfg.USBPath = runtime.USBPath
 	cfg.QMIDevice = runtime.QMIDevice
 	cfg.AudioDevice = runtime.AudioDevice
-	// 策略字段（network/vowifi/airplane/ip/apn）已改为跟卡走、只存在于运行时投影，
 	// 不再来自 persisted(config.yaml)。必须取 runtime，否则概览显示恒为 off。
 	cfg.NetworkEnabled = runtime.NetworkEnabled
-	cfg.VoWiFiEnabled = runtime.VoWiFiEnabled
 	cfg.AirplaneEnabled = runtime.AirplaneEnabled
 	cfg.IPVersion = runtime.IPVersion
 	cfg.APN = runtime.APN
@@ -241,104 +186,6 @@ func overviewDisplayConfig(runtime, persisted config.DeviceConfig, hasPersisted 
 	// 否则 worker 投影完成前或离线时 sms_enabled 为 false，会被短信中心设备过滤掉。
 	cfg.SMSEnabled = true
 	return cfg
-}
-
-func (s *Server) handleDeviceMgmtOverview(c *gin.Context) {
-	includeConfig := strings.TrimSpace(c.DefaultQuery("include_config", "1")) != "0"
-	workers := s.pool.GetAllWorkers()
-	managed := config.ListDevices()
-	cfgByID := map[string]config.DeviceConfig{}
-	for _, d := range managed {
-		cfgByID[d.ID] = d
-	}
-	tagByID := map[string]string{}
-	tags := make([]string, 0, len(workers))
-	for _, w := range workers {
-		cfg := w.Config
-		if v, ok := cfgByID[w.ID]; ok {
-			cfg = overviewDisplayConfig(w.Config, v, true)
-		}
-		if cfg.Interface == "" {
-			continue
-		}
-		tag := w.ID + "@" + cfg.Interface
-		tagByID[w.ID] = tag
-		tags = append(tags, tag)
-	}
-	byTag, _ := db.GetLatestMinuteDeltasBatch("iface", tags)
-	now := time.Now()
-
-	workerByID := map[string]bool{}
-	items := make([]deviceMgmtOverviewItem, 0, len(workers))
-	for _, w := range workers {
-		workerByID[w.ID] = true
-		cfg := w.Config
-		if v, ok := cfgByID[w.ID]; ok {
-			cfg = overviewDisplayConfig(w.Config, v, true)
-		}
-		status := w.GetCachedDeviceStatus() // 设备管理总览列表读缓存，0 IPC
-		controlOnline := w.GetCachedHealthy()
-		item := deviceMgmtOverviewItem{
-			ID:                     w.ID,
-			Name:                   cfg.Name,
-			Running:                true,
-			Healthy:                controlOnline, // 兼容旧客户端：healthy 表示控制面在线
-			ControlOnline:          controlOnline,
-			PublicIP:               w.GetCachedIP(),
-			PublicIPv6:             w.GetCachedIPv6(),
-			Modem:                  modemSummaryStatus(status),
-			NetworkConnected:       w.NetworkConnected(),
-			RegistrationStateLabel: registrationStateLabel(status.RegStatus),
-			BackendMode: func() string {
-				if w.Backend != nil {
-					return w.Backend.Mode()
-				}
-				return "at"
-			}(),
-		}
-		item.Interface = cfg.Interface
-		item.ControlDevice = cfg.ControlDevice
-		item.ATPort = w.ResolvedATPort()
-		item.USBPath = cfg.USBPath
-		if includeConfig {
-			dto := deviceConfigToDTO(cfg)
-			item.Config = &dto
-		}
-		if nc := w.NetworkController(); nc != nil {
-			item.PrivateIP = nc.GetPrivateIP()
-			item.PrivateIPv6 = nc.GetPrivateIPv6()
-		}
-		item.Traffic, item.TrafficRaw, item.TrafficMeta = buildTrafficOverviewFields(cfg.Interface, byTag[tagByID[w.ID]], now)
-		s.applyLifecycleToOverviewItem(&item, true, cfg)
-		items = append(items, item)
-	}
-	for _, dc := range managed {
-		if workerByID[dc.ID] {
-			continue
-		}
-		var cfgDTO *deviceConfigDTO
-		if includeConfig {
-			dto := deviceConfigToDTO(dc)
-			cfgDTO = &dto
-		}
-		item := deviceMgmtOverviewItem{
-			ID:                     dc.ID,
-			Name:                   dc.Name,
-			Running:                false,
-			Healthy:                false,
-			ControlOnline:          false,
-			PublicIP:               "",
-			Config:                 cfgDTO,
-			Modem:                  modem.DeviceStatus{},
-			Traffic:                nil,
-			BackendMode:            resolveOfflineBackendMode(dc),
-			NetworkConnected:       false,
-			RegistrationStateLabel: registrationStateLabel(0),
-		}
-		s.applyLifecycleToOverviewItem(&item, false, dc)
-		items = append(items, item)
-	}
-	c.JSON(http.StatusOK, gin.H{"devices": items})
 }
 
 type deviceMgmtOverviewLiteItem struct {
@@ -364,13 +211,9 @@ type deviceMgmtOverviewLiteItem struct {
 	USBPath                string             `json:"usb_path,omitempty"`
 	AudioDevice            string             `json:"audio_device,omitempty"`
 	LocalPhone             string             `json:"local_phone,omitempty"`
-	E911SetupAvailable     bool               `json:"e911_setup_available,omitempty"`
 	ActiveESIMProfileName  string             `json:"active_esim_profile_name,omitempty"`
 	SMSEnabled             bool               `json:"sms_enabled"`
 	NetworkEnabled         bool               `json:"network_enabled"`
-	VoWiFiEnabled          bool               `json:"vowifi_enabled"`
-	VoWiFiActive           bool               `json:"vowifi_active"`
-	VoWiFiRuntime          *voWiFiRuntimeDTO  `json:"vowifi_runtime,omitempty"`
 	RadioLiveOK            *bool              `json:"radio_live_ok,omitempty"`
 	Modem                  modem.DeviceStatus `json:"modem"`
 	Traffic                map[string]string  `json:"traffic,omitempty"`
@@ -416,65 +259,9 @@ type deviceMgmtListItem struct {
 	ESIMTransport          string              `json:"esim_transport,omitempty"`
 	SMSEnabled             bool                `json:"sms_enabled"`
 	NetworkEnabled         bool                `json:"network_enabled"`
-	VoWiFiEnabled          bool                `json:"vowifi_enabled"`
-	VoWiFiRuntime          *voWiFiRuntimeDTO   `json:"vowifi_runtime,omitempty"`
 	Modem                  deviceMgmtListModem `json:"modem"`
 	NetworkConnected       bool                `json:"network_connected"`
 	RegistrationStateLabel string              `json:"registration_state_label"`
-}
-
-type voWiFiRuntimeDTO struct {
-	DeviceID       string    `json:"device_id"`
-	Phase          string    `json:"phase"`
-	DataplaneMode  string    `json:"dataplane_mode"`
-	ICCID          string    `json:"iccid,omitempty"`
-	IMSI           string    `json:"imsi,omitempty"`
-	SIMReady       bool      `json:"sim_ready"`
-	AccessReady    bool      `json:"access_ready"`
-	TunnelReady    bool      `json:"tunnel_ready"`
-	IMSReady       bool      `json:"ims_ready"`
-	SMSReady       bool      `json:"sms_ready"`
-	RegStatus      int       `json:"reg_status"`
-	RegStatusText  string    `json:"reg_status_text"`
-	NetworkMode    string    `json:"network_mode"`
-	LastErrorClass string    `json:"last_error_class"`
-	LastError      string    `json:"last_error"`
-	LastReason     string    `json:"last_reason"`
-	UpdatedAt      time.Time `json:"updated_at"`
-}
-
-func runtimeStateToDTO(st runtimehost.State, status modem.DeviceStatus) *voWiFiRuntimeDTO {
-	return &voWiFiRuntimeDTO{
-		DeviceID:       st.DeviceID,
-		Phase:          string(st.Phase),
-		DataplaneMode:  st.DataplaneMode,
-		ICCID:          strings.TrimSpace(status.ICCID),
-		IMSI:           strings.TrimSpace(status.IMSI),
-		SIMReady:       st.SIMReady,
-		AccessReady:    st.AccessReady,
-		TunnelReady:    st.TunnelReady,
-		IMSReady:       st.IMSReady,
-		SMSReady:       st.SMSReady,
-		RegStatus:      st.RegStatus,
-		RegStatusText:  st.RegStatusText,
-		NetworkMode:    st.NetworkMode,
-		LastErrorClass: st.LastErrorClass,
-		LastError:      st.LastError,
-		LastReason:     st.LastReason,
-		UpdatedAt:      st.UpdatedAt,
-	}
-}
-
-func (s *Server) getVoWiFiRuntimeDTO(deviceID string) *voWiFiRuntimeDTO {
-	st, ok := s.pool.GetVoWiFiRuntimeState(deviceID)
-	if !ok {
-		return nil
-	}
-	status := modem.DeviceStatus{}
-	if w := s.pool.GetWorker(deviceID); w != nil {
-		status = w.ProjectDeviceStatus()
-	}
-	return runtimeStateToDTO(st, status)
 }
 
 func isLifecycleActiveForAPI(phase string) bool {
@@ -517,20 +304,6 @@ func lifecyclePhaseForAPI(snap device.LifecycleSnapshot, workerRunning bool, con
 		}
 	}
 	return phase
-}
-
-func (s *Server) applyLifecycleToOverviewItem(item *deviceMgmtOverviewItem, workerRunning bool, cfg config.DeviceConfig) {
-	if item == nil {
-		return
-	}
-	snap := lifecycleSnapshotForAPI(s.pool, cfg.ID)
-	phase := lifecyclePhaseForAPI(snap, workerRunning, item.ControlOnline)
-	item.WorkerRunning = workerRunning
-	item.DataConnected = item.NetworkConnected
-	item.RadioRegistered = item.Modem.RegStatus == 1 || item.Modem.RegStatus == 5
-	item.LifecyclePhase = phase
-	item.LifecycleReason = snap.Reason
-	item.PhysicalPresent = workerRunning || isLifecycleActiveForAPI(phase)
 }
 
 func (s *Server) applyLifecycleToListItem(item *deviceMgmtListItem, workerRunning bool, cfg config.DeviceConfig) {
@@ -589,12 +362,8 @@ func (s *Server) buildOverviewLiteItemFromWorkerWithModem(w *device.Worker, cfg 
 		USBPath:                cfg.USBPath,
 		AudioDevice:            cfg.AudioDevice,
 		LocalPhone:             overviewLocalPhone(effectiveOverviewIMSI(w, status), strings.TrimSpace(status.ICCID)),
-		E911SetupAvailable:     e911.SetupAvailable(modemStatus),
 		SMSEnabled:             cfg.SMSEnabled,
 		NetworkEnabled:         cfg.NetworkEnabled,
-		VoWiFiEnabled:          cardPolicyVoWiFiEnabled(strings.TrimSpace(status.ICCID), cfg.VoWiFiEnabled),
-		VoWiFiActive:           s.pool.IsVoWiFiActive(w.ID),
-		VoWiFiRuntime:          s.getVoWiFiRuntimeDTO(w.ID),
 		RadioLiveOK:            radioLiveOK,
 		Modem:                  modemStatus,
 		NetworkConnected:       w.NetworkConnected(),
@@ -620,7 +389,6 @@ func (s *Server) buildOverviewLiteItemFromWorkerWithModem(w *device.Worker, cfg 
 }
 
 type overviewStreamEmitVersion struct {
-	VoWiFiActive    bool
 	LifecyclePhase  string
 	LifecycleReason string
 	HasRuntime      bool
@@ -633,17 +401,8 @@ type overviewStreamEmitVersion struct {
 
 func newOverviewStreamEmitVersion(item deviceMgmtOverviewLiteItem) overviewStreamEmitVersion {
 	v := overviewStreamEmitVersion{
-		VoWiFiActive:    item.VoWiFiActive,
 		LifecyclePhase:  item.LifecyclePhase,
 		LifecycleReason: item.LifecycleReason,
-	}
-	if item.VoWiFiRuntime != nil {
-		v.HasRuntime = true
-		v.Phase = item.VoWiFiRuntime.Phase
-		v.TunnelReady = item.VoWiFiRuntime.TunnelReady
-		v.IMSReady = item.VoWiFiRuntime.IMSReady
-		v.SMSReady = item.VoWiFiRuntime.SMSReady
-		v.LastErrorClass = item.VoWiFiRuntime.LastErrorClass
 	}
 	return v
 }
@@ -670,18 +429,6 @@ func effectiveOverviewIMSI(w *device.Worker, status modem.DeviceStatus) string {
 		return ""
 	}
 	return strings.TrimSpace(w.GetCachedIMSI())
-}
-
-func overviewLocalPhoneByIMSI(imsi string) string {
-	imsi = strings.TrimSpace(imsi)
-	if imsi == "" {
-		return ""
-	}
-	phone, err := db.GetSIMCardPhoneNumberByIMSI(imsi)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(phone)
 }
 
 func overviewLocalPhone(imsi, iccid string) string {
@@ -727,8 +474,6 @@ func (s *Server) handleDeviceMgmtList(c *gin.Context) {
 			ESIMTransport:          config.NormalizeESIMTransport(cfg.ESIMTransport),
 			SMSEnabled:             cfg.SMSEnabled,
 			NetworkEnabled:         cfg.NetworkEnabled,
-			VoWiFiEnabled:          s.pool.IsVoWiFiActive(w.ID), // 使用多设备状态查询
-			VoWiFiRuntime:          s.getVoWiFiRuntimeDTO(w.ID),
 			NetworkConnected:       w.NetworkConnected(),
 			RegistrationStateLabel: registrationStateLabel(status.RegStatus),
 			Modem: deviceMgmtListModem{
@@ -767,7 +512,6 @@ func (s *Server) handleDeviceMgmtList(c *gin.Context) {
 			ESIMTransport:          config.NormalizeESIMTransport(dc.ESIMTransport),
 			SMSEnabled:             true, // SMS 恒开（系统不变量）
 			NetworkEnabled:         dc.NetworkEnabled,
-			VoWiFiEnabled:          false, // 非运行设备无活跃 VoWiFi
 			NetworkConnected:       false,
 			RegistrationStateLabel: registrationStateLabel(0),
 			Modem:                  deviceMgmtListModem{},
@@ -776,7 +520,7 @@ func (s *Server) handleDeviceMgmtList(c *gin.Context) {
 		items = append(items, item)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"devices": items, "device_limit": device.DefaultFreeDeviceLimit})
+	c.JSON(http.StatusOK, gin.H{"devices": items})
 }
 
 // handleDeviceMgmtRefreshInfo 主动触发设备底层重新采集各种信息（SIM、信号等）
@@ -869,8 +613,6 @@ func (s *Server) handleDeviceMgmtOverviewLite(c *gin.Context) {
 				USBPath:                dc.USBPath,
 				SMSEnabled:             pol.SMSEnabled,
 				NetworkEnabled:         pol.NetworkEnabled,
-				VoWiFiEnabled:          pol.VoWiFiEnabled,
-				VoWiFiActive:           false,
 				NetworkConnected:       false,
 				RegistrationStateLabel: registrationStateLabel(0),
 				Modem:                  modem.DeviceStatus{},
@@ -932,7 +674,6 @@ func (s *Server) handleDeviceMgmtOverviewLite(c *gin.Context) {
 			ATPort:                 dc.ATPort,
 			SMSEnabled:             true, // SMS 恒开（系统不变量）
 			NetworkEnabled:         dc.NetworkEnabled,
-			VoWiFiActive:           false, // 非运行设备无活跃 VoWiFi
 			NetworkConnected:       false,
 			RegistrationStateLabel: registrationStateLabel(0),
 			Modem:                  modem.DeviceStatus{},
@@ -1001,11 +742,13 @@ type discoveredDevice struct {
 	Degraded       bool     `json:"degraded,omitempty"` // 探不到 IMEI,无法确立身份,不可直接添加
 }
 
-var discoverQMIForMgmtFn = device.DiscoverQMIDevices
-var discoverCompatibleModemsFromQMIFn = device.DiscoverCompatibleModemsFromQMI
-var enrichDiscoveredCompatibleModemFn = device.EnrichDiscoveredCompatibleModem
-var probeIMEIForAddFn = device.ProbeIMEIViaQMI
-var probeIMEIViaMBIMForMgmtFn = device.ProbeIMEIViaMBIM
+var (
+	discoverQMIForMgmtFn              = device.DiscoverQMIDevices
+	discoverCompatibleModemsFromQMIFn = device.DiscoverCompatibleModemsFromQMI
+	enrichDiscoveredCompatibleModemFn = device.EnrichDiscoveredCompatibleModem
+	probeIMEIForAddFn                 = device.ProbeIMEIViaQMI
+	probeIMEIViaMBIMForMgmtFn         = device.ProbeIMEIViaMBIM
+)
 
 func ensureAddDeviceIMEI(cfg config.DeviceConfig, probe func(string) (string, error)) (config.DeviceConfig, error) {
 	if strings.TrimSpace(cfg.ControlDevice) == "" || config.NormalizeIMEI(cfg.ModemIMEI) != "" {
@@ -1188,10 +931,6 @@ type updateDeviceRequest struct {
 	Config deviceConfigDTO `json:"config"`
 }
 
-func hasManagedNetworkCapability(cfg config.DeviceConfig) bool {
-	return strings.TrimSpace(cfg.ControlDevice) != "" && strings.TrimSpace(cfg.Interface) != ""
-}
-
 func validateManagedNetworkConfig(cfg config.DeviceConfig) error {
 	if err := validateDeviceBackendConfig(cfg); err != nil {
 		return err
@@ -1204,10 +943,6 @@ func validateManagedNetworkConfig(cfg config.DeviceConfig) error {
 }
 
 func normalizeManagedDeviceConfig(cfg config.DeviceConfig) (config.DeviceConfig, string) {
-	if cfg.VoWiFiEnabled && cfg.NetworkEnabled {
-		cfg.NetworkEnabled = false
-		return cfg, "VoWiFi 已启用"
-	}
 	return cfg, ""
 }
 
@@ -1215,7 +950,6 @@ func deviceConfigForAdd(cfg config.DeviceConfig) config.DeviceConfig {
 	cfg.APN = ""
 	cfg.IPVersion = ""
 	cfg.NetworkEnabled = false
-	cfg.VoWiFiEnabled = false
 	cfg.AirplaneEnabled = false
 	cfg.SMSEnabled = true
 	return cfg
@@ -1342,16 +1076,12 @@ func (s *Server) handleDeviceMgmtUpdateDevice(c *gin.Context) {
 
 	oldCfg := *oldMD
 	// 策略跟卡走：设备保存只负责硬件/身份字段，不再触碰策略（策略经 PUT /cards/:iccid/policy 独立编辑）。
-	// DTO 仍会回传 network/vowifi/ip/apn，但 GET config 不投影这些字段（恒零），直接采信会把卡策略清空。
 	// 故把当前有效策略同时写回 oldCfg 与 newCfg，使其在开关转换判断中互相抵消（中性化），
-	// 不写 card_policies、不误触发 VoWiFi 关闭重建/恢复射频/热拉起。
-	_, effNetwork, effVoWiFi, effIP, effAPN := s.currentEffectiveDevicePolicy(id)
+	_, effNetwork, effIP, effAPN := s.currentEffectiveDevicePolicy(id)
 	oldCfg.NetworkEnabled = effNetwork
-	oldCfg.VoWiFiEnabled = effVoWiFi
 	oldCfg.IPVersion = effIP
 	oldCfg.APN = effAPN
 	newCfg.NetworkEnabled = effNetwork
-	newCfg.VoWiFiEnabled = effVoWiFi
 	newCfg.IPVersion = effIP
 	newCfg.APN = effAPN
 
@@ -1365,48 +1095,22 @@ func (s *Server) handleDeviceMgmtUpdateDevice(c *gin.Context) {
 	worker := s.pool.GetWorker(id)
 	s.pool.UpdateWorkerConfig(id, newCfg, !requiresRestart)
 
-	// 检测 DeviceBackend 状态变化，或 VoWiFi 从开启变为关闭都需要彻底重建 Worker 释放残余句柄
+	// 检测 DeviceBackend 状态变化需要彻底重建 Worker
 	needsRebuild := oldCfg.DeviceBackend != newCfg.DeviceBackend ||
 		qmiProxyConfigChanged(oldCfg, newCfg) ||
-		(!newCfg.VoWiFiEnabled && oldCfg.VoWiFiEnabled) ||
 		(worker != nil && managedNetworkConfigChanged(oldCfg, newCfg))
 	shouldApplyNetworkNow := worker != nil || needsRebuild
 
 	warningMessage := forcedWarning
 	if needsRebuild {
-		logger.Info("配置保存触发底盘或 VoWiFi 停止变更，将彻底重建 Worker", "device", id)
+		logger.Info("配置保存触发底盘停止变更，将彻底重建 Worker", "device", id)
 		if err := s.pool.RebuildWorker(id); err != nil {
 			logger.Error("重建 Worker 失败", "device", id, "err", err)
 			warningMessage = joinWarningMessages(warningMessage, "配置已保存，但运行时重建失败: "+err.Error())
 		}
 	}
 
-	shouldRestoreRadio := oldCfg.VoWiFiEnabled && !newCfg.VoWiFiEnabled
-	if shouldRestoreRadio {
-		if s.pool.IsVoWiFiActive(id) {
-			warningMessage = joinWarningMessages(warningMessage, "VoWiFi 尚未完全退出，暂未恢复射频")
-		} else if err := s.pool.RestoreRadioAfterVoWiFi(id); err != nil {
-			logger.Warn("配置保存后恢复射频失败", "device", id, "err", err)
-			warningMessage = joinWarningMessages(warningMessage, "配置已保存，但恢复射频失败: "+err.Error())
-		}
-	}
-
-	// 检测 VoWiFi 状态变化，仅对于由关到开执行热拉起
-	if newCfg.VoWiFiEnabled && !oldCfg.VoWiFiEnabled {
-		logger.Info("配置保存触发 VoWiFi 启动", "device", id)
-		if err := s.pool.EnableVoWiFi(id); err != nil {
-			logger.Error("VoWiFi 启动失败", "device", id, "err", err)
-			c.JSON(http.StatusOK, gin.H{
-				"status":           "ok",
-				"requires_restart": requiresRestart,
-				"warning":          joinWarningMessages(warningMessage, "VoWiFi 启动失败: "+err.Error()),
-				"vowifi_error":     "VoWiFi 启动失败: " + err.Error(),
-			})
-			return
-		}
-	}
-
-	if shouldApplyNetworkNow && !newCfg.VoWiFiEnabled && !s.pool.IsVoWiFiActive(id) {
+	if shouldApplyNetworkNow {
 		if err := s.pool.ApplyConfiguredNetwork(id); err != nil {
 			logger.Warn("配置保存后自动应用网络偏好失败", "device", id, "err", err)
 			warningMessage = joinWarningMessages(warningMessage, "配置已保存，但自动应用网络失败: "+err.Error())
@@ -1466,13 +1170,6 @@ func validateDeviceBackendConfig(cfg config.DeviceConfig) error {
 	return nil
 }
 
-func validateFreeDeviceConfigLimit(devices []config.DeviceConfig) error {
-	if device.FreeDeviceLimitReached(len(devices)) {
-		return fmt.Errorf("%s", device.FreeDeviceAddLimitMessage())
-	}
-	return nil
-}
-
 func (s *Server) handleDeviceMgmtAddDevice(c *gin.Context) {
 	var req addDeviceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1500,10 +1197,6 @@ func (s *Server) handleDeviceMgmtAddDevice(c *gin.Context) {
 			"status":  "error",
 			"message": fmt.Sprintf("设备资源冲突：%s=%s 已被设备 %s 使用", conflict.Field, conflict.Value, conflict.OtherID),
 		})
-		return
-	}
-	if err := validateFreeDeviceConfigLimit(config.ListDevices()); err != nil {
-		c.JSON(http.StatusConflict, gin.H{"status": "error", "message": err.Error()})
 		return
 	}
 	// MBIM 设备使用 MBIM DeviceCaps 探测 IMEI，非 MBIM 设备使用 QMI 探测
@@ -1952,7 +1645,6 @@ func (s *Server) handleEsimSwitchProfile(c *gin.Context) {
 		SIMReloadOK:        result.PowerCycleAttempt && result.SIMReloadWarning == "",
 		SIMReloadWarning:   result.SIMReloadWarning,
 	})
-
 }
 
 // handleEsimGetEID 获取所有 eUICC 的 EID 列表
@@ -2177,7 +1869,6 @@ type executeUSSDRequest struct {
 }
 
 // handleDeviceMgmtExecuteUSSD 执行 USSD 指令
-// 路由策略：VoWiFi 在线时优先使用 VoWiFi 通道，否则回退到 CS 域
 func (s *Server) handleDeviceMgmtExecuteUSSD(c *gin.Context) {
 	id := deviceIDParam(c)
 	var req executeUSSDRequest
@@ -2204,19 +1895,6 @@ func (s *Server) handleDeviceMgmtExecuteUSSD(c *gin.Context) {
 	}
 	if timeout > 120*time.Second {
 		timeout = 120 * time.Second
-	}
-
-	// VoWiFi 在线时优先走 VoWiFi
-	if s.pool.IsVoWiFiActive(id) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
-		defer cancel()
-		resp, err := s.pool.SendVoWiFiUSSD(ctx, id, cmd)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error(), "channel": "vowifi"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "result": resp, "channel": "vowifi"})
-		return
 	}
 
 	// 回退到 CS 域 USSD
@@ -2263,35 +1941,23 @@ func (s *Server) handleDeviceMgmtContinueUSSD(c *gin.Context) {
 		timeout = 120 * time.Second
 	}
 
-	if !s.pool.IsVoWiFiActive(id) {
-		worker := s.pool.GetWorker(id)
-		if worker == nil {
-			c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备未找到"})
-			return
-		}
-		provider, ok := worker.Backend.(backend.USSDContinueProvider)
-		if !ok || provider == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "当前设备后端不支持多轮 USSD"})
-			return
-		}
-		resp, err := provider.ContinueUSSD(c.Request.Context(), input, timeout)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error(), "channel": "cs"})
-			return
-		}
-		markCSUSSDSession(resp)
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "result": resp, "channel": "cs"})
+	worker := s.pool.GetWorker(id)
+	if worker == nil {
+		c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备未找到"})
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
-	defer cancel()
-	resp, err := s.pool.ContinueVoWiFiUSSD(ctx, id, req.SessionID, input)
+	provider, ok := worker.Backend.(backend.USSDContinueProvider)
+	if !ok || provider == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "当前设备后端不支持多轮 USSD"})
+		return
+	}
+	resp, err := provider.ContinueUSSD(c.Request.Context(), input, timeout)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error(), "channel": "cs"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "result": resp, "channel": "vowifi"})
+	markCSUSSDSession(resp)
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "result": resp, "channel": "cs"})
 }
 
 type cancelUSSDRequest struct {
@@ -2307,30 +1973,21 @@ func (s *Server) handleDeviceMgmtCancelUSSD(c *gin.Context) {
 		req.SessionID = ""
 	}
 
-	if !s.pool.IsVoWiFiActive(id) {
-		worker := s.pool.GetWorker(id)
-		if worker == nil {
-			c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备未找到"})
-			return
-		}
-		provider, ok := worker.Backend.(backend.USSDProvider)
-		if !ok || provider == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "当前设备后端不支持 USSD 取消"})
-			return
-		}
-		if err := provider.CancelUSSD(c.Request.Context()); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "USSD 会话已取消", "channel": "cs"})
+	worker := s.pool.GetWorker(id)
+	if worker == nil {
+		c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备未找到"})
 		return
 	}
-
-	if err := s.pool.CancelVoWiFiUSSD(c.Request.Context(), id, req.SessionID); err != nil {
+	provider, ok := worker.Backend.(backend.USSDProvider)
+	if !ok || provider == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "当前设备后端不支持 USSD 取消"})
+		return
+	}
+	if err := provider.CancelUSSD(c.Request.Context()); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "USSD 会话已取消"})
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "USSD 会话已取消", "channel": "cs"})
 }
 
 func markCSUSSDSession(resp *backend.USSDResult) {
@@ -2368,19 +2025,12 @@ func (s *Server) handleDeviceMgmtSetFlightMode(c *gin.Context) {
 		return
 	}
 
-	if s.pool.IsVoWiFiActive(id) {
-		c.JSON(http.StatusConflict, gin.H{"status": "error", "message": "VoWiFi 正在接管飞行模式，请先停用或退出 VoWiFi"})
-		return
-	}
-
 	flightModeEnabled := req.Enabled
 
-	// 先落库卡策略（飞行模式跟卡走）：开飞行与 network/vowifi 互斥，关飞行仅清 airplane。
-	// best-effort：落库失败不阻断热切（与 network/vowifi 热切路径一致）。
+	// 先落库卡策略（飞行模式跟卡走）：开飞行与 network 互斥，关飞行仅清 airplane。
 	s.patchCardPolicyForDevice(id, func(p *db.CardPolicy) {
 		if flightModeEnabled {
 			p.AirplaneEnabled = true
-			p.VoWiFiEnabled = false
 			p.NetworkEnabled = false
 		} else {
 			p.AirplaneEnabled = false
@@ -2494,32 +2144,6 @@ func validateRebootWorkerIdentity(ctx context.Context, worker *device.Worker) er
 	return nil
 }
 
-// handleDeviceMgmtReconnectVoWiFi 执行重连 VoWiFi 的操作
-func (s *Server) handleDeviceMgmtReconnectVoWiFi(c *gin.Context) {
-	id := deviceIDParam(c)
-
-	// 验证设备存在（硬件/传输配置仍在 config.yaml）
-	md, err := config.GetDeviceByID(id)
-	if err != nil || md == nil {
-		c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "设备配置不存在"})
-		return
-	}
-
-	// VoWiFi 开关已跟卡走、只存在于运行时投影。门禁读 worker 的有效策略；
-	// 无 worker 时跳过友好门禁，交由 RestartVoWiFi 报告底层错误。
-	if worker := s.pool.GetWorker(id); worker != nil && !worker.Config.VoWiFiEnabled {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "设备未开启 VoWiFi，无法重连"})
-		return
-	}
-
-	if err := s.pool.RestartVoWiFi(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "VoWiFi 重连失败: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "已触发 VoWiFi 重连"})
-}
-
 // handleDeviceMgmtOverviewStreamSingle 给前端管理的概览信息提供带有动态刷新的 SSE 推流（仅针对选中的单个设备）
 func (s *Server) handleDeviceMgmtOverviewStreamSingle(c *gin.Context) {
 	c.Header("Content-Type", "text/event-stream")
@@ -2540,18 +2164,6 @@ func (s *Server) handleDeviceMgmtOverviewStreamSingle(c *gin.Context) {
 	notify := c.Writer.CloseNotify()
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
-
-	// 订阅 VoWiFi 运行态变更——状态一变（如 IMS 注册成功）立即推送，无需等待 Ticker。
-	// 若 VoWiFi 未启动则 stateCh 为 nil，nil channel 在 select 中永远阻塞，行为安全。
-	stateCh, unsubState := s.pool.SubscribeVoWiFiState(deviceID)
-	defer unsubState()
-	trafficStream := overviewTrafficStreamState{
-		subscriber: s.trafficRT,
-		deviceID:   deviceID,
-		ctx:        c.Request.Context(),
-	}
-	defer trafficStream.stop()
-	var trafficCh <-chan proxytraffic.RealtimeSnapshot
 
 	var (
 		cachedCfg *config.DeviceConfig
@@ -2579,15 +2191,6 @@ func (s *Server) handleDeviceMgmtOverviewStreamSingle(c *gin.Context) {
 			trueVal := true
 			// 用运行时投影(w.Config)合并展示，使策略字段反映跟卡走的有效值
 			item = s.buildOverviewLiteDetailItemFromWorker(w, overviewDisplayConfig(w.Config, *md, true), status, &trueVal)
-			if overviewRealtimeTrafficEnabled(item) {
-				tag := w.ID + "@" + md.Interface
-				ps, rx, tx, _ := db.GetLatestMinuteDeltas("iface", tag)
-				item.Traffic, item.TrafficRaw, item.TrafficMeta = buildTrafficOverviewFields(md.Interface, db.LatestMinuteDeltas{
-					PeriodStart: ps,
-					RxBytes:     rx,
-					TxBytes:     tx,
-				}, time.Now())
-			}
 		} else {
 			trueVal := true
 			pol := resolveOfflineDevicePolicy(deviceID)
@@ -2605,8 +2208,6 @@ func (s *Server) handleDeviceMgmtOverviewStreamSingle(c *gin.Context) {
 				AudioDevice:            md.AudioDevice,
 				SMSEnabled:             pol.SMSEnabled,
 				NetworkEnabled:         pol.NetworkEnabled,
-				VoWiFiEnabled:          pol.VoWiFiEnabled,
-				VoWiFiActive:           false,
 				NetworkConnected:       false,
 				RegistrationStateLabel: registrationStateLabel(0),
 				RadioLiveOK:            &trueVal,
@@ -2617,18 +2218,12 @@ func (s *Server) handleDeviceMgmtOverviewStreamSingle(c *gin.Context) {
 			s.applyLifecycleToOverviewLiteItem(&item, nil, *md)
 		}
 
-		trafficCh = trafficStream.sync(item)
 		curr := newOverviewStreamEmitVersion(item)
 		if fromStateEvent && shouldSkipOverviewStatePush(lastSent, curr) {
 			return
 		}
 		lastSent = &curr
 		if fromStateEvent {
-			phase := ""
-			if item.VoWiFiRuntime != nil {
-				phase = item.VoWiFiRuntime.Phase
-			}
-			logger.Debug("overview SSE 推送 VoWiFi 状态变更", "device", deviceID, "phase", phase)
 		}
 
 		// 仍然使用 devices 结构体包裹返回单项从而无缝对接前台旧结构
@@ -2648,60 +2243,10 @@ func (s *Server) handleDeviceMgmtOverviewStreamSingle(c *gin.Context) {
 			return
 		case <-ticker.C:
 			sendData(true, false)
-		case <-stateCh: // VoWiFi 状态变化（隧道建立/IMS 注册/SMS 就绪等），立即推送
 			sendData(false, true)
-		case snap, ok := <-trafficCh:
-			if !ok {
-				trafficStream.stop()
-				trafficCh = nil
-				continue
-			}
-			c.SSEvent("traffic", snap)
-			c.Writer.Flush()
+
 		}
 	}
-}
-
-type overviewTrafficStreamState struct {
-	subscriber  realtimeTrafficSubscriber
-	deviceID    string
-	ctx         context.Context
-	ch          <-chan proxytraffic.RealtimeSnapshot
-	unsubscribe func()
-}
-
-func (s *overviewTrafficStreamState) sync(item deviceMgmtOverviewLiteItem) <-chan proxytraffic.RealtimeSnapshot {
-	if s == nil || s.subscriber == nil || s.deviceID == "" {
-		return nil
-	}
-	if !overviewRealtimeTrafficEnabled(item) {
-		s.stop()
-		return nil
-	}
-	if s.ch != nil {
-		return s.ch
-	}
-	ctx := s.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	s.ch, s.unsubscribe = s.subscriber.Subscribe(ctx, s.deviceID)
-	return s.ch
-}
-
-func (s *overviewTrafficStreamState) stop() {
-	if s == nil {
-		return
-	}
-	if s.unsubscribe != nil {
-		s.unsubscribe()
-	}
-	s.ch = nil
-	s.unsubscribe = nil
-}
-
-func overviewRealtimeTrafficEnabled(item deviceMgmtOverviewLiteItem) bool {
-	return item.NetworkEnabled && item.NetworkConnected
 }
 
 func resolveOfflineBackendMode(cfg config.DeviceConfig) string {

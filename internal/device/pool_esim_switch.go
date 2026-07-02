@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/esim"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/internal/backend"
+	"github.com/openvohive/openvohive/internal/esim"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
 var postSwitchSIMAuthRecoveryDelays = []time.Duration{
@@ -814,7 +814,7 @@ func (p *Pool) prewarmPostSwitchSIMAuth(deviceID string, worker *Worker) postSwi
 }
 
 func (p *Pool) waitPostSwitchSIMAuthReady(deviceID string, worker *Worker) error {
-	if worker == nil || worker.Backend == nil || !worker.Config.VoWiFiEnabled {
+	if worker == nil || worker.Backend == nil {
 		return nil
 	}
 	configureWorkerAPDUArbiter(worker, nil)
@@ -846,24 +846,8 @@ func (p *Pool) waitPostSwitchSIMAuthReady(deviceID string, worker *Worker) error
 }
 
 func (p *Pool) restorePostSwitchConnectivity(deviceID string, worker *Worker, snapshot esimSwitchContext, restoreGateErr error, markDegraded bool) {
-	if worker.Config.VoWiFiEnabled {
-		if restoreGateErr != nil {
-			if markDegraded {
-				p.markESIMSwitchPhase(deviceID, esim.SwitchPhaseDegraded)
-			}
-			logger.Warn("切卡后跳过 VoWiFi 恢复：恢复门控未通过",
-				"device", deviceID,
-				"reason", "post_switch_finalize",
-				"err", restoreGateErr)
-		} else {
-			p.clearDesiredVoWiFiRecoverState(deviceID)
-			if err := p.voWiFiHost().SwitchEnd(context.Background(), deviceID, true); err != nil {
-				p.markESIMSwitchPhase(deviceID, esim.SwitchPhaseDegraded)
-				logger.Error("切卡后恢复 VoWiFi 失败", "device", deviceID, "err", err)
-			} else {
-				return
-			}
-		}
+	if restoreGateErr != nil && markDegraded {
+		p.markESIMSwitchPhase(deviceID, esim.SwitchPhaseDegraded)
 	}
 	p.restoreRadioDataForSwitchSnapshot(deviceID, worker, snapshot, "post_switch_finalize", worker.Config.ESIMSwitch.RadioCycle)
 }
@@ -1028,8 +1012,6 @@ func (p *Pool) handleESIMSwitchAfter(deviceID string, token uint64) {
 
 	logger.Info("ESIM 切卡后开始按快照恢复运行态",
 		"device", deviceID,
-		"vowifi_switch", worker.Config.VoWiFiEnabled,
-		"vowifi_before", snapshot.VoWiFiActiveBefore,
 		"flight_before", snapshot.FlightModeBefore,
 		"qmi_connected_before", snapshot.QMIConnectedBefore,
 		"network_enabled_before", snapshot.NetworkEnabledBefore)
@@ -1079,18 +1061,16 @@ func (p *Pool) handleESIMSwitchAfter(deviceID string, token uint64) {
 	}
 	p.schedulePostSwitchIdentityRefreshes(deviceID, snapshot)
 	var restoreGateErr error
-	if worker.Config.VoWiFiEnabled {
-		simAuthReadyStart := time.Now()
-		restoreGateErr = p.waitPostSwitchSIMAuthReady(deviceID, worker)
-		logger.Info("切卡后 SIMAuth gate 阶段耗时",
-			"device", deviceID,
-			"ready", restoreGateErr == nil,
-			"sim_auth_ready_ms", time.Since(simAuthReadyStart).Milliseconds())
-		if !p.switchTokenStillCurrent(deviceID, token, "simauth_ready") {
-			return
-		}
+	simAuthReadyStart := time.Now()
+	restoreGateErr = p.waitPostSwitchSIMAuthReady(deviceID, worker)
+	logger.Info("切卡后 SIMAuth gate 阶段耗时",
+		"device", deviceID,
+		"ready", restoreGateErr == nil,
+		"sim_auth_ready_ms", time.Since(simAuthReadyStart).Milliseconds())
+	if !p.switchTokenStillCurrent(deviceID, token, "simauth_ready") {
+		return
 	}
-	p.markESIMSwitchPhaseIfToken(deviceID, token, esim.SwitchPhaseVoWiFiRestore)
+
 	if !p.switchTokenStillCurrent(deviceID, token, "vowifi_restore") {
 		return
 	}

@@ -4,7 +4,6 @@ package cardpolicy
 type Policy struct {
 	ICCID           string
 	NetworkEnabled  bool
-	VoWiFiEnabled   bool
 	AirplaneEnabled bool
 	IPVersion       string
 	APN             string

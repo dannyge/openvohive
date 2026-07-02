@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
-const qmiCoreStartupInlineBudget = 1500 * time.Millisecond
-const qmiCoreRetryAttemptBudget = 15 * time.Second
+const (
+	qmiCoreStartupInlineBudget = 1500 * time.Millisecond
+	qmiCoreRetryAttemptBudget  = 15 * time.Second
+)
 
 type qmiCoreStartResult struct {
 	err   error

@@ -7,9 +7,9 @@ import (
 	"time"
 
 	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/internal/backend"
+	"github.com/openvohive/openvohive/internal/config"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
 type postSwitchAction string

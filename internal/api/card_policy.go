@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iniwex5/vohive/internal/db"
+	"github.com/openvohive/openvohive/internal/db"
 )
 
 // patchCardPolicyForDevice 解析设备当前 ICCID，对 card_policies 行执行原地修改并落库。
@@ -64,7 +64,6 @@ func (s *Server) handlePutCardPolicy(c *gin.Context) {
 	iccid := c.Param("iccid")
 	var req struct {
 		NetworkEnabled *bool  `json:"network_enabled"`
-		VoWiFiEnabled  *bool  `json:"vowifi_enabled"`
 		IPVersion      string `json:"ip_version"`
 		APN            string `json:"apn"`
 	}
@@ -81,9 +80,6 @@ func (s *Server) handlePutCardPolicy(c *gin.Context) {
 
 	if req.NetworkEnabled != nil {
 		pol.NetworkEnabled = *req.NetworkEnabled
-	}
-	if req.VoWiFiEnabled != nil {
-		pol.VoWiFiEnabled = *req.VoWiFiEnabled
 	}
 	if req.IPVersion != "" {
 		pol.IPVersion = req.IPVersion

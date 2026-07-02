@@ -5,11 +5,13 @@ import (
 	"time"
 
 	qmiq "github.com/iniwex5/quectel-qmi-go/pkg/qmi"
-	"github.com/iniwex5/vohive/internal/config"
+	"github.com/openvohive/openvohive/internal/config"
 )
 
-var discoverQMIDevicesFn = DiscoverQMIDevices
-var probeIMEIViaQMIFn = ProbeIMEIViaQMIWithOptions
+var (
+	discoverQMIDevicesFn = DiscoverQMIDevices
+	probeIMEIViaQMIFn    = ProbeIMEIViaQMIWithOptions
+)
 
 type QMIDeviceEnrichOptions struct {
 	EnableATProbe      bool

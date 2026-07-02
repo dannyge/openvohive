@@ -68,37 +68,17 @@ func ResolveIPFamily(in string) (enableV4 bool, enableV6 bool, err error) {
 }
 
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Devices  []DeviceConfig `mapstructure:"devices"`
-	Telegram TelegramConfig `mapstructure:"telegram"`
-	Feishu   FeishuConfig   `mapstructure:"feishu"`
-	QQ       QQConfig       `mapstructure:"qq"`
-	Webhook  WebhookConfig  `mapstructure:"webhook"`
-
-	Bark     BarkConfig     `mapstructure:"bark"`
-	Email    EmailConfig    `mapstructure:"email"`
-	Pushplus PushplusConfig `mapstructure:"pushplus"`
-	Web      WebConfig      `mapstructure:"web"`
-	Proxy    ProxyConfig    `mapstructure:"proxy"`
-	VoWiFi   VoWiFiConfig   `mapstructure:"vowifi"`
+	Server       ServerConfig       `mapstructure:"server"`
+	Devices      []DeviceConfig     `mapstructure:"devices"`
+	Telegram     TelegramConfig     `mapstructure:"telegram"`
+	Webhook      WebhookConfig      `mapstructure:"webhook"`
+	Email        EmailConfig        `mapstructure:"email"`
+	Web          WebConfig          `mapstructure:"web"`
+	VoiceGateway VoiceGatewayConfig `mapstructure:"voice_gateway"`
 }
 
-// ProxyConfig 定义代理服务配置
-type ProxyConfig struct {
-	Instances []ProxyInstance `mapstructure:"instances"` // 代理实例列表
-}
-
-type VoWiFiConfig struct {
-	Enabled  bool   `mapstructure:"enabled"`
-	DeviceID string `mapstructure:"device_id"` // 留空则取第一个
-	Mode     string `mapstructure:"mode"`      // vowifi|volte(当前会回退为 vowifi)，默认 vowifi
-
-	VoiceGateway VoWiFiVoiceGatewayConfig `mapstructure:"voice_gateway"`
-}
-
-// VoWiFiVoiceGatewayConfig 语音网关配置（支持 Linphone 接打电话）。
 // 无需显式 enabled 字段，sip.listen 非空时自动启用。
-type VoWiFiVoiceGatewayConfig struct {
+type VoiceGatewayConfig struct {
 	// SIP 服务配置
 	SIP struct {
 		Listen     string `mapstructure:"listen"`      // 监听地址，如 "0.0.0.0:5060"
@@ -108,7 +88,7 @@ type VoWiFiVoiceGatewayConfig struct {
 	} `mapstructure:"sip"`
 
 	// 用户配置
-	Users []VoWiFiVoiceUserConfig `mapstructure:"users"`
+	Users []VoiceGatewayUserConfig `mapstructure:"users"`
 
 	// 媒体配置
 	Media struct {
@@ -124,107 +104,12 @@ type VoWiFiVoiceGatewayConfig struct {
 	} `mapstructure:"linphone_push"`
 }
 
-// VoWiFiVoiceUserConfig 语音用户配置
-type VoWiFiVoiceUserConfig struct {
+// VoiceGatewayUserConfig 语音用户配置
+type VoiceGatewayUserConfig struct {
 	Username    string `mapstructure:"username"`
 	Password    string `mapstructure:"password"`
 	DisplayName string `mapstructure:"display_name"`
 	DeviceID    string `mapstructure:"device_id"` // 绑定的设备 ID
-}
-
-// ProxyInstance 定义一个代理实例配置
-type ProxyInstance struct {
-	ID          string `mapstructure:"id" json:"id"`                   // 实例唯一标识
-	Name        string `mapstructure:"name" json:"name"`               // 显示名称
-	DeviceID    string `mapstructure:"device_id" json:"device_id"`     // 绑定设备 ID（强制绑定对应网卡）
-	Enabled     bool   `mapstructure:"enabled" json:"enabled"`         // 是否启用
-	Mode        string `mapstructure:"mode" json:"mode"`               // 代理模式: socks5|http
-	ListenAddr  string `mapstructure:"listen_addr" json:"listen_addr"` // 监听地址
-	ListenPort  int    `mapstructure:"listen_port" json:"listen_port"` // 监听端口
-	AuthEnabled bool   `mapstructure:"auth_enabled" json:"auth_enabled"`
-	Username    string `mapstructure:"username" json:"username"`
-	Password    string `mapstructure:"password" json:"password"`
-}
-
-type V2RayTransportOptions struct {
-	HTTP        *V2RayHTTPOptions        `mapstructure:"http,omitempty" json:"http,omitempty"`
-	WS          *V2RayWebsocketOptions   `mapstructure:"ws,omitempty" json:"ws,omitempty"`
-	GRPC        *V2RayGRPCOptions        `mapstructure:"grpc,omitempty" json:"grpc,omitempty"`
-	HTTPUpgrade *V2RayHTTPUpgradeOptions `mapstructure:"httpupgrade,omitempty" json:"httpupgrade,omitempty"`
-	QUIC        *V2RayQUICOptions        `mapstructure:"quic,omitempty" json:"quic,omitempty"`
-}
-
-type V2RayHTTPOptions struct {
-	Host        []string          `mapstructure:"host,omitempty" json:"host,omitempty"`
-	Path        string            `mapstructure:"path,omitempty" json:"path,omitempty"`
-	Method      string            `mapstructure:"method,omitempty" json:"method,omitempty"`
-	Headers     map[string]string `mapstructure:"headers,omitempty" json:"headers,omitempty"`
-	IdleTimeout string            `mapstructure:"idle_timeout,omitempty" json:"idle_timeout,omitempty"`
-	PingTimeout string            `mapstructure:"ping_timeout,omitempty" json:"ping_timeout,omitempty"`
-}
-
-type V2RayWebsocketOptions struct {
-	Path                string            `mapstructure:"path,omitempty" json:"path,omitempty"`
-	Headers             map[string]string `mapstructure:"headers,omitempty" json:"headers,omitempty"`
-	MaxEarlyData        uint32            `mapstructure:"max_early_data,omitempty" json:"max_early_data,omitempty"`
-	EarlyDataHeaderName string            `mapstructure:"early_data_header_name,omitempty" json:"early_data_header_name,omitempty"`
-}
-
-type V2RayQUICOptions struct{}
-
-type V2RayGRPCOptions struct {
-	ServiceName         string `mapstructure:"service_name,omitempty" json:"service_name,omitempty"`
-	IdleTimeout         string `mapstructure:"idle_timeout,omitempty" json:"idle_timeout,omitempty"`
-	PingTimeout         string `mapstructure:"ping_timeout,omitempty" json:"ping_timeout,omitempty"`
-	PermitWithoutStream bool   `mapstructure:"permit_without_stream,omitempty" json:"permit_without_stream,omitempty"`
-}
-
-type V2RayHTTPUpgradeOptions struct {
-	Host    string            `mapstructure:"host,omitempty" json:"host,omitempty"`
-	Path    string            `mapstructure:"path,omitempty" json:"path,omitempty"`
-	Headers map[string]string `mapstructure:"headers,omitempty" json:"headers,omitempty"`
-}
-
-// InboundUser 定义入站用户配置
-type InboundUser struct {
-	Name     string `mapstructure:"name" json:"name"`                             // 用户名
-	UUID     string `mapstructure:"uuid,omitempty" json:"uuid,omitempty"`         // UUID（VMess/VLESS）
-	Password string `mapstructure:"password,omitempty" json:"password,omitempty"` // 密码
-	Flow     string `mapstructure:"flow,omitempty" json:"flow,omitempty"`         // VLESS Flow (如 xtls-rprx-vision)
-	AlterID  int    `mapstructure:"alter_id,omitempty" json:"alter_id,omitempty"` // AlterID
-}
-
-// TLSConfig 定义 TLS 配置
-type TLSConfig struct {
-	Enabled    bool   `mapstructure:"enabled" json:"enabled"`                             // 是否启用 TLS
-	ServerName string `mapstructure:"server_name,omitempty" json:"server_name,omitempty"` // 客户端 SNI / REALITY ServerName
-	CertPath   string `mapstructure:"cert_path,omitempty" json:"cert_path,omitempty"`     // 证书文件路径
-	KeyPath    string `mapstructure:"key_path,omitempty" json:"key_path,omitempty"`       // 私钥文件路径
-	Insecure   bool   `mapstructure:"insecure,omitempty" json:"insecure,omitempty"`       // 是否跳过证书验证
-
-	// REALITY 特有配置
-	Reality *RealityConfig `mapstructure:"reality,omitempty" json:"reality,omitempty"`
-	// ECH 特有配置
-	ECH *ECHConfig `mapstructure:"ech,omitempty" json:"ech,omitempty"`
-}
-
-// RealityConfig 定义 REALITY 配置
-type RealityConfig struct {
-	Enabled     bool     `mapstructure:"enabled" json:"enabled"`
-	Handshake   string   `mapstructure:"handshake" json:"handshake"`                         // 握手服务器 (SNI)
-	Port        int      `mapstructure:"port" json:"port"`                                   // 握手端口
-	PrivateKey  string   `mapstructure:"private_key" json:"private_key"`                     // 私钥
-	PublicKey   string   `mapstructure:"public_key" json:"public_key"`                       // 公钥
-	ShortID     []string `mapstructure:"short_id" json:"short_id"`                           // Short IDs
-	Fingerprint string   `mapstructure:"fingerprint,omitempty" json:"fingerprint,omitempty"` // uTLS 指纹 (fp)
-	MaxTimeDiff int64    `mapstructure:"max_time_diff,omitempty" json:"max_time_diff,omitempty"`
-}
-
-// ECHConfig 定义 ECH 配置
-type ECHConfig struct {
-	Enabled bool   `mapstructure:"enabled" json:"enabled"`
-	Key     string `mapstructure:"key" json:"key"`       // ECH Keys (Base64)
-	Config  string `mapstructure:"config" json:"config"` // ECH Configs (Base64)
 }
 
 type WebConfig struct {
@@ -257,13 +142,12 @@ type DeviceConfig struct {
 	ID            string `mapstructure:"id"`
 	Name          string `mapstructure:"name"` // 设备显示名称
 	ModemIMEI     string `mapstructure:"modem_imei"`
-	USBPath       string `mapstructure:"-"` // Deprecated: 运行时按 IMEI 现解析,绝不从文件读取
-	ATPort        string `mapstructure:"-"` // Deprecated: 运行时解析;AT 终端用 Worker.ResolvedATPort()
-	ProxyPort     int    `mapstructure:"proxy_port"`
-	ManagePort    string `mapstructure:"-"` // Deprecated: 运行时解析,绝不从文件读取
-	Interface     string `mapstructure:"-"` // Deprecated: 运行时解析,绝不从文件读取
-	QMIDevice     string `mapstructure:"-"` // Deprecated: 运行时解析,绝不从文件读取
-	ControlDevice string `mapstructure:"-"` // Deprecated: 运行时按 IMEI 现解析,绝不从文件读取
+	USBPath       string `mapstructure:"-"`              // Deprecated: 运行时按 IMEI 现解析,绝不从文件读取
+	ATPort        string `mapstructure:"-"`              // Deprecated: 运行时解析;AT 终端用 Worker.ResolvedATPort()
+	ManagePort    string `mapstructure:"-"`              // Deprecated: 运行时解析,绝不从文件读取
+	Interface     string `mapstructure:"-"`              // Deprecated: 运行时解析,绝不从文件读取
+	QMIDevice     string `mapstructure:"-"`              // Deprecated: 运行时解析,绝不从文件读取
+	ControlDevice string `mapstructure:"-"`              // Deprecated: 运行时按 IMEI 现解析,绝不从文件读取
 	MBIMTransport string `mapstructure:"mbim_transport"` // MBIM 传输: auto|proxy|direct，默认 auto
 	QMIUseProxy   bool   `mapstructure:"qmi_use_proxy"`  // 是否通过 libqmi qmi-proxy 打开 QMI 控制口
 	// 可选：qmi-proxy abstract socket 名称和可执行文件路径。留空使用 quectel-qmi-go 默认值。
@@ -289,7 +173,6 @@ type DeviceConfig struct {
 	APN             string `mapstructure:"-"`
 	NetworkEnabled  bool   `mapstructure:"-"`
 	IPVersion       string `mapstructure:"-"`
-	VoWiFiEnabled   bool   `mapstructure:"-"`
 	AirplaneEnabled bool   `mapstructure:"-"`
 	SMSEnabled      bool   `mapstructure:"-"` // SMS 恒开，运行时强制 true
 
@@ -306,23 +189,6 @@ type TelegramConfig struct {
 	Proxy    string `mapstructure:"proxy"`    // HTTP 代理地址 (例如 http://127.0.0.1:7890)
 }
 
-// FeishuConfig 飞书通知配置
-type FeishuConfig struct {
-	Enabled   bool     `mapstructure:"enabled"`
-	AppID     string   `mapstructure:"app_id"`     // 飞书开放平台应用 App ID
-	AppSecret string   `mapstructure:"app_secret"` // 飞书开放平台应用 App Secret
-	ChatIDs   []string `mapstructure:"chat_ids"`   // 飞书群聊 chat_id 列表
-	ChatID    string   `mapstructure:"chat_id"`    // 兼容旧配置：单个 chat_id
-}
-
-type QQConfig struct {
-	Enabled   bool   `mapstructure:"enabled"`
-	AppID     string `mapstructure:"app_id"`
-	AppSecret string `mapstructure:"app_secret"`
-	GroupIDs  string `mapstructure:"group_ids"`  // 逗号分隔的群组 OpenID
-	DirectIDs string `mapstructure:"direct_ids"` // 逗号分隔的私聊 OpenID
-}
-
 type WebhookConfig struct {
 	Enabled      bool              `mapstructure:"enabled"`
 	URLs         []string          `mapstructure:"urls"`
@@ -331,14 +197,6 @@ type WebhookConfig struct {
 	RetryMax     int               `mapstructure:"retry_max"`
 	TextTemplate string            `mapstructure:"text_template"`
 	Headers      map[string]string `mapstructure:"headers,omitempty" json:"headers,omitempty"`
-}
-
-type BarkConfig struct {
-	Enabled bool     `mapstructure:"enabled"`
-	URLs    []string `mapstructure:"urls"`
-	Group   string   `mapstructure:"group"`
-	Icon    string   `mapstructure:"icon"`
-	Level   string   `mapstructure:"level"`
 }
 
 type EmailConfig struct {
@@ -350,13 +208,6 @@ type EmailConfig struct {
 	Password    string   `mapstructure:"password"`
 	FromAddress string   `mapstructure:"from_address"`
 	ToAddresses []string `mapstructure:"to_addresses"`
-}
-
-type PushplusConfig struct {
-	Enabled bool   `mapstructure:"enabled"`
-	Token   string `mapstructure:"token"`
-	Topic   string `mapstructure:"topic"`
-	Channel string `mapstructure:"channel"`
 }
 
 func Load(path string) (*Config, error) {
@@ -376,21 +227,15 @@ func Load(path string) (*Config, error) {
 	viper.SetDefault("webhook.retry_max", 3)
 	viper.SetDefault("webhook.text_template", DefaultWebhookTextTemplate)
 
-	viper.SetDefault("bark.enabled", false)
-	viper.SetDefault("bark.group", "vohive")
-	viper.SetDefault("bark.level", "active")
 	viper.SetDefault("email.enabled", false)
 	viper.SetDefault("email.use_ssl", false)
-	viper.SetDefault("pushplus.enabled", false)
 	viper.SetDefault("web.username", "admin")
 	viper.SetDefault("web.password", "admin")
-	viper.SetDefault("vowifi.enabled", false)
-	viper.SetDefault("vowifi.mode", "vowifi")
 	viper.SetDefault("imscore.use_sipgo_udp", false)
 
 	// 官方默认推送秘钥与用户 (留空则不执行 Push)
-	viper.SetDefault("vowifi.voice_gateway.linphone_push.linphone_user", "")
-	viper.SetDefault("vowifi.voice_gateway.linphone_push.linphone_password", "")
+	viper.SetDefault("voice_gateway.linphone_push.linphone_user", "")
+	viper.SetDefault("voice_gateway.linphone_push.linphone_password", "")
 
 	// 环境变量覆盖支持 (例如 PROXY_DEVICES_0_APN)
 	viper.SetEnvPrefix("PROXY")
@@ -404,11 +249,6 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
-	}
-
-	// 兼容旧版单值配置: feishu.chat_id
-	if len(cfg.Feishu.ChatIDs) == 0 && strings.TrimSpace(cfg.Feishu.ChatID) != "" {
-		cfg.Feishu.ChatIDs = []string{strings.TrimSpace(cfg.Feishu.ChatID)}
 	}
 
 	// 兼容 server.port 格式 (例如: 7575 和 :7575)

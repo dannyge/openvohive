@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
 // AudioBridge PCM ↔ RTP 音频桥接器

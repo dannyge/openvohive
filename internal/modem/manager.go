@@ -16,10 +16,10 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"github.com/iniwex5/vohive/internal/apduarbiter"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/pkg/logger"
-	"github.com/iniwex5/vohive/pkg/smscodec"
+	"github.com/openvohive/openvohive/internal/apduarbiter"
+	"github.com/openvohive/openvohive/internal/config"
+	"github.com/openvohive/openvohive/pkg/logger"
+	"github.com/openvohive/openvohive/pkg/smscodec"
 	"github.com/warthog618/sms/encoding/gsm7"
 
 	"go.bug.st/serial"
@@ -1460,12 +1460,6 @@ func (m *Manager) handleURC(line string) {
 	}
 }
 
-// readAndProcessSMS 读取并处理短信
-func (m *Manager) readAndProcessSMS(index string) {
-	// 公开给外部调用的封装 (如果需要)
-	m.ReadAndProcessSMS(index)
-}
-
 // ReadAndProcessSMS 公开方法：读取并处理短信
 func (m *Manager) ReadAndProcessSMS(index string) {
 	m.readAndProcessSMSFromStorage("", index)
@@ -1868,13 +1862,6 @@ func (m *Manager) getAPDUSession(channel int) (apduSessionInfo, bool) {
 	return session, ok
 }
 
-func (m *Manager) hasAPDUSession(channel int) bool {
-	m.apduLeaseMu.Lock()
-	defer m.apduLeaseMu.Unlock()
-	_, ok := m.apduSessions[channel]
-	return ok
-}
-
 func (m *Manager) takeAPDUSession(channel int) (apduSessionInfo, bool) {
 	m.apduLeaseMu.Lock()
 	defer m.apduLeaseMu.Unlock()
@@ -2034,12 +2021,6 @@ func (m *Manager) SendSMSWithOptions(phone, message string, opts smscodec.Submit
 
 	logger.Info(fmt.Sprintf("[%s] 短信已发送", m.cfg.ID))
 	return nil
-}
-
-// buildSMSPDUs 构建多段 SMS-SUBMIT PDU
-// 返回: PDU 十六进制字符串列表, TPDU 长度列表 (不含 SMSC), 错误
-func (m *Manager) buildSMSPDUs(phone, message string) ([]string, []int, error) {
-	return m.buildSMSPDUsWithOptions(phone, message, smscodec.SubmitOptions{})
 }
 
 func (m *Manager) buildSMSPDUsWithOptions(phone, message string, opts smscodec.SubmitOptions) ([]string, []int, error) {

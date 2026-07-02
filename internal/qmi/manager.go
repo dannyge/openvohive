@@ -11,10 +11,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/iniwex5/vohive/internal/apduarbiter"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/netprobe"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/internal/apduarbiter"
+	"github.com/openvohive/openvohive/internal/config"
+	"github.com/openvohive/openvohive/internal/netprobe"
+	"github.com/openvohive/openvohive/pkg/logger"
 
 	qmimanager "github.com/iniwex5/quectel-qmi-go/pkg/manager"
 	"github.com/iniwex5/quectel-qmi-go/pkg/netcfg"
@@ -1332,13 +1332,6 @@ func (m *Manager) getAPDUSession(channel byte) (apduSessionInfo, bool) {
 	return session, ok
 }
 
-func (m *Manager) hasAPDUSession(channel byte) bool {
-	m.apduLeaseMu.Lock()
-	defer m.apduLeaseMu.Unlock()
-	_, ok := m.apduSessions[channel]
-	return ok
-}
-
 func (m *Manager) takeAPDUSession(channel byte) (apduSessionInfo, bool) {
 	m.apduLeaseMu.Lock()
 	defer m.apduLeaseMu.Unlock()
@@ -2048,7 +2041,8 @@ func (m *Manager) WMSDeleteMessage(ctx context.Context, storageType uint8, index
 func (m *Manager) WMSListMessagesAuto(ctx context.Context, storageType uint8) ([]struct {
 	Index uint32
 	Tag   qmi.MessageTagType
-}, error) {
+}, error,
+) {
 	if m == nil || m.qmiMgr == nil {
 		return nil, fmt.Errorf("qmi_manager_not_available")
 	}
@@ -2176,7 +2170,8 @@ func (m *Manager) AckRawSMS(ctx context.Context, info RawSMSIndication, success 
 func (m *Manager) ListSMS(storageType uint8, tag qmi.MessageTagType) ([]struct {
 	Index uint32
 	Tag   qmi.MessageTagType
-}, error) {
+}, error,
+) {
 	return m.qmiMgr.ListSMS(storageType, tag)
 }
 

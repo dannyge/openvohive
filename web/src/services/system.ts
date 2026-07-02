@@ -31,21 +31,6 @@ export type TelegramSettings = {
   proxy: string
 }
 
-export type FeishuSettings = {
-  enabled: boolean
-  app_id: string
-  app_secret: string
-  chat_ids: string[]
-}
-
-export type QQSettings = {
-  enabled: boolean
-  app_id: string
-  app_secret: string
-  group_ids: string
-  direct_ids: string
-}
-
 export type WebhookSettings = {
   enabled: boolean
   urls: string[]
@@ -54,14 +39,6 @@ export type WebhookSettings = {
   retry_max: number
   text_template: string
   headers: Record<string, string>
-}
-
-export type BarkSettings = {
-  enabled: boolean
-  urls: string[]
-  group: string
-  icon: string
-  level: string
 }
 
 export type EmailSettings = {
@@ -75,21 +52,10 @@ export type EmailSettings = {
   to_addresses: string[]
 }
 
-export type PushplusSettings = {
-  enabled: boolean
-  token: string
-  topic: string
-  channel: string
-}
-
 export type NotificationsSettingsResponse = {
   telegram?: Partial<TelegramSettings>
-  feishu?: Partial<FeishuSettings>
-  qq?: Partial<QQSettings>
   email?: Partial<EmailSettings>
-  pushplus?: Partial<PushplusSettings>
   webhook?: Partial<WebhookSettings>
-  bark?: Partial<BarkSettings>
 }
 
 export type SaveNotificationsPayload = {
@@ -101,19 +67,6 @@ export type SaveNotificationsPayload = {
     base_url: string
     proxy: string
   }
-  feishu: {
-    enabled: boolean
-    app_id: string
-    app_secret: string
-    chat_ids: string[]
-  }
-  qq: {
-    enabled: boolean
-    app_id: string
-    app_secret: string
-    group_ids: string
-    direct_ids: string
-  }
   email: {
     enabled: boolean
     use_ssl: boolean
@@ -124,12 +77,6 @@ export type SaveNotificationsPayload = {
     from_address: string
     to_addresses: string[]
   }
-  pushplus: {
-    enabled: boolean
-    token: string
-    topic: string
-    channel: string
-  }
   webhook: {
     enabled: boolean
     urls: string[]
@@ -138,13 +85,6 @@ export type SaveNotificationsPayload = {
     retry_max: number
     text_template: string
     headers?: Record<string, string>
-  }
-  bark: {
-    enabled: boolean
-    urls: string[]
-    group: string
-    icon: string
-    level: string
   }
 }
 
@@ -164,20 +104,6 @@ export type TestWebhookPayload = {
 }
 
 export type TestWebhookResponse = {
-  ok: boolean
-  message: string
-  failed_urls?: string[]
-}
-
-export type TestBarkPayload = {
-  enabled: boolean
-  urls: string[]
-  group: string
-  icon: string
-  level: string
-}
-
-export type TestBarkResponse = {
   ok: boolean
   message: string
   failed_urls?: string[]
@@ -233,27 +159,9 @@ export const systemService = {
       return res.data
     })
   },
-  testBark(payload: TestBarkPayload) {
-    return callService(async () => {
-      const res = await api.post<TestBarkResponse>('/settings/notifications/bark/test', payload)
-      return res.data
-    })
-  },
   testEmail(payload: TestEmailPayload) {
     return callService(async () => {
       const res = await api.post<TestEmailResponse>('/settings/notifications/email/test', payload)
-      return res.data
-    })
-  },
-  checkUpdate() {
-    return callService(async () => {
-      const res = await api.get<UpdateInfo>('/system/update/check')
-      return res.data
-    })
-  },
-  applyUpdate() {
-    return callService(async () => {
-      const res = await api.post<{ message: string }>('/system/update/apply', {})
       return res.data
     })
   }

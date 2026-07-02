@@ -29,7 +29,6 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           manualChunks(id) {
-            if (id.includes('/src/views/Proxy.vue') || id.includes('/src/stores/proxy') || id.includes('/src/services/proxy')) return 'route-proxy'
             if (id.includes('/src/views/Devices.vue') || id.includes('/src/stores/devices') || id.includes('/src/services/devices')) return 'route-devices'
             if (id.includes('/src/views/Sms.vue') || id.includes('/src/stores/sms') || id.includes('/src/services/sms')) return 'route-sms'
             if (id.includes('/src/views/Logs.vue') || id.includes('/src/stores/logs') || id.includes('/src/services/logs')) return 'route-logs'

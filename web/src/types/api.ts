@@ -36,22 +36,6 @@ export type RealtimeTrafficSnapshot = {
   error?: string
 }
 
-export type VoWiFiRuntimeState = {
-  device_id?: string
-  dataplane_mode?: string
-  sim_ready?: boolean
-  access_ready?: boolean
-  tunnel_ready?: boolean
-  ims_ready?: boolean
-  sms_ready?: boolean
-  reg_status?: number
-  reg_status_text?: string
-  network_mode?: string
-  last_error_class?: string
-  last_error?: string
-  last_reason?: string
-  updated_at?: string
-}
 
 export type DeviceLifecyclePhase =
   | 'offline'
@@ -88,12 +72,8 @@ export type DeviceOverviewItem = {
   at_port?: string
   usb_path?: string
   local_phone?: string
-  e911_setup_available?: boolean
   active_esim_profile_name?: string
   network_enabled: boolean
-  vowifi_enabled?: boolean
-  vowifi_active?: boolean
-  vowifi_runtime?: VoWiFiRuntimeState
   radio_live_ok?: boolean
   modem: ModemStatus
   traffic?: DeviceTrafficFormatted
@@ -122,8 +102,6 @@ export type DeviceMgmtListItem = {
   esim_transport?: string
   sms_enabled: boolean
   network_enabled: boolean
-  vowifi_enabled?: boolean
-  vowifi_runtime?: VoWiFiRuntimeState
   modem?: Pick<ModemStatus, 'operator' | 'native_spn' | 'native_mcc' | 'native_mnc' | 'network_mode' | 'network_duplex' | 'radio_band' | 'radio_channel' | 'signal_dbm' | 'signal_sinr' | 'imei' | 'iccid' | 'reg_status'>
 }
 
@@ -142,7 +120,6 @@ export type DeviceConfigDTO = {
   qmi_use_proxy?: boolean
   qmi_proxy_path?: string
   qmi_proxy_executable?: string
-  vowifi_enabled?: boolean
   device_backend?: 'at' | 'qmi' | 'mbim'
   operator_selection_mode?: string
   operator_selection_plmn?: string
@@ -297,8 +274,6 @@ export type DashboardDevice = {
   signal_dbm: number
   public_ip?: string
   public_ipv6?: string
-  vowifi_active?: boolean
-  vowifi_runtime?: VoWiFiRuntimeState
 }
 
 export type SMSMessage = {
@@ -351,97 +326,10 @@ export type NotificationSettings = {
     urls: string[]
     secret: string
   }
-  bark: {
-    enabled: boolean
-    urls: string[]
-    group: string
-    icon: string
-    level: string
-  }
 }
 
-// ============ 代理管理相关类型 ============
-export type ProxyMode = 'socks5' | 'http'
+export type OperatorSelectionMode = "automatic" | "manual"
 
-export type ProxyInstance = {
-  id: string
-  name: string
-  device_id: string
-  enabled: boolean
-  mode: ProxyMode
-  listen_addr: string
-  listen_port: number
-  auth_enabled: boolean
-  username: string
-  password?: string
-}
-
-// 实例运行状态
-export type ProxyInstanceStatus = {
-  id: string
-  mode?: ProxyMode
-  running: boolean
-  started_at?: string
-  last_exit_at?: string
-  last_exit_ok?: boolean
-  last_error?: string
-  listen_addr?: string
-  listen_port?: number
-  interface?: string
-  auth_enabled?: boolean
-}
-
-// 设备简要信息（用于绑定选择）
-export type ProxyDevice = {
-  id: string
-  name: string
-  interface: string
-}
-
-// Overview 响应
-export type ProxyOverviewResponse = {
-  instances: ProxyInstance[]
-  devices: ProxyDevice[]
-  status: ProxyInstanceStatus[]
-}
-
-// ============ 前置代理（Upstream Proxy / VoWiFi Socks5 前置代理）相关类型 ============
-
-// 前置代理实例
-export type UpstreamProxy = {
-  id: string
-  name: string
-  addr: string        // Socks5 服务器地址 (host:port；IPv6 使用 [IPv6]:port)
-  username: string
-  password?: string   // 列表接口返回脱敏值 "****"
-  enabled: boolean
-  created_at?: string
-  updated_at?: string
-}
-
-// MCC/MNC 表中的国家分组
-export type UpstreamProxyCountry = {
-  country_code: string
-  country_name: string
-  mccs: string[]
-}
-
-// 国家与前置代理的路由规则
-export type UpstreamProxyCountryRule = {
-  country_code: string
-  country_name: string
-  mccs: string[]
-  upstream_proxy_id: string
-  enabled: boolean
-  updated_at?: string
-}
-
-export type UpstreamProxyCountryRulePayload = {
-  upstream_proxy_id: string
-  enabled: boolean
-}
-
-export type OperatorSelectionMode = 'automatic' | 'manual'
 export type OperatorSelectionRAT = '' | 'gsm' | 'lte' | 'wcdma' | 'nr5g'
 
 export type OperatorCandidate = {

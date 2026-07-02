@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/internal/backend"
+	"github.com/openvohive/openvohive/internal/config"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
 var (
@@ -210,10 +210,6 @@ func (w *Worker) EnsureMBIMRegistration(ctx context.Context, requiredForData boo
 
 func (w *Worker) ensureMBIMRegistration(ctx context.Context, requiredForData bool) error {
 	if w == nil || w.MBIMCore == nil || w.Backend == nil {
-		return nil
-	}
-	if w.Pool != nil && w.Pool.IsVoWiFiActive(w.ID) {
-		logger.Debug("MBIM 驻网协调跳过：VoWiFi 当前活跃", "device", w.ID)
 		return nil
 	}
 	ctrl, ok := w.Backend.(mbimRegistrationController)

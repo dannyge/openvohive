@@ -4,11 +4,13 @@ import (
 	"context"
 	"time"
 
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
-var qmiIdentityConvergenceTimeout = 2 * time.Minute
-var qmiConvergenceRetryInterval = 2 * time.Second
+var (
+	qmiIdentityConvergenceTimeout = 2 * time.Minute
+	qmiConvergenceRetryInterval   = 2 * time.Second
+)
 
 // qmiConvergenceTransportFailureLimit 是收敛期间允许的连续传输断开次数上限，
 // 达到后判定 qmi-proxy 控制面已失联，升级为完整 Worker 重建。

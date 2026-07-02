@@ -13,7 +13,6 @@ import (
 type CardPolicy struct {
 	ICCID           string    `gorm:"column:iccid;primaryKey" json:"iccid"`
 	NetworkEnabled  bool      `gorm:"column:network_enabled" json:"network_enabled"`
-	VoWiFiEnabled   bool      `gorm:"column:vowifi_enabled" json:"vowifi_enabled"`
 	AirplaneEnabled bool      `gorm:"column:airplane_enabled" json:"airplane_enabled"`
 	IPVersion       string    `gorm:"column:ip_version" json:"ip_version"`
 	APN             string    `gorm:"column:apn" json:"apn"`
@@ -29,7 +28,6 @@ func DefaultCardPolicy(iccid string) CardPolicy {
 	return CardPolicy{
 		ICCID:           strings.TrimSpace(iccid),
 		NetworkEnabled:  false,
-		VoWiFiEnabled:   false,
 		AirplaneEnabled: false,
 		IPVersion:       "v4",
 		APN:             "",
@@ -38,10 +36,6 @@ func DefaultCardPolicy(iccid string) CardPolicy {
 }
 
 // NormalizeCardPolicy 仅做字段归一（trim ICCID、空 ip 归一为 v4）。
-// 注意：airplane_enabled 表示“用户的纯飞行意图”，独立于 vowifi——不再强制
-// vowifi=on ⇒ airplane=on。VoWiFi 接管射频是运行时投影的派生行为（见
-// applyPolicyToWorker / resolveAndApplyPolicy 的 VoWiFi 优先分支），不污染存储意图；
-// 这样关闭 VoWiFi 后能按存储的飞行意图正确回退（之前是飞行回飞行，之前在线回在线）。
 func NormalizeCardPolicy(p *CardPolicy) {
 	if p == nil {
 		return
@@ -90,7 +84,6 @@ func UpsertCardPolicy(p CardPolicy) error {
 		Columns: []clause.Column{{Name: "iccid"}},
 		DoUpdates: clause.Assignments(map[string]any{
 			"network_enabled":  p.NetworkEnabled,
-			"vowifi_enabled":   p.VoWiFiEnabled,
 			"airplane_enabled": p.AirplaneEnabled,
 			"ip_version":       p.IPVersion,
 			"apn":              p.APN,

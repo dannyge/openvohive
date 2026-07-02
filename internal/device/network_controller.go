@@ -1,8 +1,8 @@
 package device
 
 import (
-	mbimcore "github.com/iniwex5/vohive/internal/mbim"
-	qmicore "github.com/iniwex5/vohive/internal/qmi"
+	mbimcore "github.com/openvohive/openvohive/internal/mbim"
+	qmicore "github.com/openvohive/openvohive/internal/qmi"
 )
 
 type NetworkController interface {

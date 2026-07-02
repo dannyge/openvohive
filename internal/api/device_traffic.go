@@ -4,8 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/db"
-	"github.com/iniwex5/vohive/internal/proxy/server"
+	"github.com/openvohive/openvohive/internal/db"
 )
 
 const (
@@ -58,9 +57,9 @@ func buildTrafficOverviewFields(iface string, delta db.LatestMinuteDeltas, now t
 	}
 	rate := float64(rx+tx) / 60.0
 	return map[string]string{
-			"rx":   server.FormatBytes(rx),
-			"tx":   server.FormatBytes(tx),
-			"rate": server.FormatBytes(int64(rate)) + "/s",
+			"rx":   formatBytes(rx),
+			"tx":   formatBytes(tx),
+			"rate": formatBytes(int64(rate)) + "/s",
 		}, map[string]int64{
 			"bytes_received": rx,
 			"bytes_sent":     tx,

@@ -55,9 +55,3 @@ func shouldEmitRateLimited(level, key string, window time.Duration) bool {
 
 	return true
 }
-
-func resetRateLimiterForTest() {
-	rateLimiterState.mu.Lock()
-	clear(rateLimiterState.last)
-	rateLimiterState.mu.Unlock()
-}

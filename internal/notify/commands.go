@@ -7,10 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/db"
-	"github.com/iniwex5/vowifi-go/runtimehost"
-	"github.com/iniwex5/vowifi-go/runtimehost/messaging"
-	"github.com/iniwex5/vowifi-go/runtimehost/voicehost"
+	"github.com/openvohive/openvohive/internal/db"
 )
 
 // ---------- 通用命令 handler（TG 和飞书共用） ----------
@@ -68,73 +65,20 @@ func (m *Manager) handleCmdSendSMS(cmdCtx CommandContext, args []string) string 
 	if worker.Config.Name != "" {
 		displayName = fmt.Sprintf("%s (%s)", worker.Config.Name, worker.ID)
 	}
-	isVoWiFi := m.pool.IsVoWiFiActive(deviceID)
 
 	// /send 是用户的显式操作，不能因 notifyPool 满载被丢弃。
 	// 这里使用独立 goroutine，确保命令被执行并回执结果。
 	go func() {
-		var sendErr error
-		if isVoWiFi {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			ctx = messaging.WithSuppressSendTGSuccess(ctx)
-			sendErr = m.pool.SendVoWiFiSMS(ctx, deviceID, phone, message)
-			if sendErr != nil {
-				cmdCtx.Reply(fmt.Sprintf("发送短信 / 失败\n设备    %s\n号码    %s\n通道    VoWiFi\n原因    %v", displayName, phone, sendErr))
-				return
-			}
-		} else {
-			sendErr = worker.SendSMS(phone, message)
-			if sendErr != nil {
-				cmdCtx.Reply(fmt.Sprintf("发送短信 / 失败\n设备    %s\n号码    %s\n通道    蜂窝\n原因    %v", displayName, phone, sendErr))
-				return
-			}
-			_ = db.SaveSMS(worker.GetIMSI(), worker.ID, phone, message, 2, 2, time.Now())
+		sendErr := worker.SendSMS(phone, message)
+		if sendErr != nil {
+			cmdCtx.Reply(fmt.Sprintf("发送短信 / 失败\n设备    %s\n号码    %s\n原因    %v", displayName, phone, sendErr))
+			return
 		}
-
-		channel := "蜂窝"
-		if isVoWiFi {
-			channel = "VoWiFi"
-		}
-		cmdCtx.Reply(fmt.Sprintf("发送短信 / 完成\n设备    %s\n号码    %s\n通道    %s\n内容    %s", displayName, phone, channel, message))
+		_ = db.SaveSMS(worker.GetIMSI(), worker.ID, phone, message, 2, 2, time.Now())
+		cmdCtx.Reply(fmt.Sprintf("发送短信 / 完成\n设备    %s\n号码    %s\n内容    %s", displayName, phone, message))
 	}()
 
-	channel := "蜂窝"
-	if isVoWiFi {
-		channel = "VoWiFi"
-	}
-	return fmt.Sprintf("发送短信 / 已受理\n设备    %s\n号码    %s\n通道    %s", displayName, phone, channel)
-}
-
-func summarizeVoWiFiReady(st runtimehost.State) string {
-	notReady := make([]string, 0, 5)
-	if !st.SIMReady {
-		notReady = append(notReady, "SIM")
-	}
-	if !st.AccessReady {
-		notReady = append(notReady, "Access")
-	}
-	if !st.TunnelReady {
-		notReady = append(notReady, "Tunnel")
-	}
-	if !st.IMSReady {
-		notReady = append(notReady, "IMS")
-	}
-	if !st.SMSReady {
-		notReady = append(notReady, "SMS")
-	}
-	if len(notReady) == 0 {
-		return "SIM / Access / Tunnel / IMS / SMS 全部就绪"
-	}
-	return strings.Join(notReady, " / ") + " 未就绪"
-}
-
-func formatVoWiFiDataplane(mode string) string {
-	mode = strings.TrimSpace(mode)
-	if mode == "" {
-		return "--"
-	}
-	return mode
+	return fmt.Sprintf("发送短信 / 已受理\n设备    %s\n号码    %s", displayName, phone)
 }
 
 // handleCmdStatus 处理 /status 命令
@@ -212,12 +156,6 @@ func (m *Manager) handleCmdStatus(cmdCtx CommandContext, args []string) string {
 	if worker.IsDeviceHealthy() {
 		healthText = "正常"
 	}
-	isVoWiFiActive := m.pool.IsVoWiFiActive(worker.ID)
-	voWiFiState, hasVoWiFiState := m.pool.GetVoWiFiRuntimeState(worker.ID)
-	lastReason := "--"
-	if strings.TrimSpace(voWiFiState.LastReason) != "" {
-		lastReason = strings.TrimSpace(voWiFiState.LastReason)
-	}
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("设备详情 / %s\n\n", displayName))
@@ -231,26 +169,14 @@ func (m *Manager) handleCmdStatus(cmdCtx CommandContext, args []string) string {
 		sb.WriteString(fmt.Sprintf("eSIM   %s\n", activeESIMProfileName))
 	}
 	sb.WriteString("\n网络状态\n")
-	if isVoWiFiActive {
-		readySummary := summarizeVoWiFiReady(voWiFiState)
-		dataplane := "--"
-		if hasVoWiFiState {
-			dataplane = formatVoWiFiDataplane(voWiFiState.DataplaneMode)
-		}
-		sb.WriteString("模式    VoWiFi\n")
-		sb.WriteString(fmt.Sprintf("数据平面  %s\n", dataplane))
-		sb.WriteString(fmt.Sprintf("就绪项  %s\n", readySummary))
-		sb.WriteString(fmt.Sprintf("最后原因  %s\n", lastReason))
-	} else {
-		sb.WriteString(fmt.Sprintf("运营商  %s\n", operator))
-		sb.WriteString(fmt.Sprintf("注册    %s\n", regStatus))
-		sb.WriteString(fmt.Sprintf("信号    %d dBm (RSRP: %d, RSRQ: %d)\n", status.SignalDBM, status.SignalRSRP, status.SignalRSRQ))
-		sb.WriteString(fmt.Sprintf("LAC/CI  %s\n", lacCell))
-		sb.WriteString(fmt.Sprintf("APN     %s\n", apn))
-		sb.WriteString("\n连接\n")
-		sb.WriteString(fmt.Sprintf("公网 IP  %s\n", publicIP))
-		sb.WriteString(fmt.Sprintf("内网 IP  %s\n", privateIP))
-	}
+	sb.WriteString(fmt.Sprintf("运营商  %s\n", operator))
+	sb.WriteString(fmt.Sprintf("注册    %s\n", regStatus))
+	sb.WriteString(fmt.Sprintf("信号    %d dBm (RSRP: %d, RSRQ: %d)\n", status.SignalDBM, status.SignalRSRP, status.SignalRSRQ))
+	sb.WriteString(fmt.Sprintf("LAC/CI  %s\n", lacCell))
+	sb.WriteString(fmt.Sprintf("APN     %s\n", apn))
+	sb.WriteString("\n连接\n")
+	sb.WriteString(fmt.Sprintf("公网 IP  %s\n", publicIP))
+	sb.WriteString(fmt.Sprintf("内网 IP  %s\n", privateIP))
 
 	return sb.String()
 }
@@ -348,32 +274,16 @@ func (m *Manager) handleCmdList(cmdCtx CommandContext, args []string) string {
 			netMode = ""
 		}
 
-		if m.pool.IsVoWiFiActive(w.ID) {
-			if netMode == "" {
-				netMode = "VoWiFi"
-			} else {
-				netMode = "VoWiFi (" + netMode + ")"
-			}
-		}
-
 		netDisplay := opName
 		if netMode != "" {
-			if opName == "未知网络" && strings.HasPrefix(netMode, "VoWiFi") {
-				netDisplay = netMode
-			} else {
-				netDisplay = opName + " " + netMode
-			}
+			netDisplay = opName + " " + netMode
 		}
 
 		sb.WriteString(fmt.Sprintf("%s / %s\n", displayName, healthy))
 		sb.WriteString(fmt.Sprintf("本号   %s\n", phone))
 		sb.WriteString(fmt.Sprintf("ICCID  *%s\n", iccidShort))
-		if m.pool.IsVoWiFiActive(w.ID) {
-			sb.WriteString(fmt.Sprintf("网络   %s\n", netDisplay))
-		} else {
-			sb.WriteString(fmt.Sprintf("网络   %s\n", netDisplay))
-			sb.WriteString(fmt.Sprintf("信号   %d dBm\n", status.SignalDBM))
-		}
+		sb.WriteString(fmt.Sprintf("网络   %s\n", netDisplay))
+		sb.WriteString(fmt.Sprintf("信号   %d dBm\n", status.SignalDBM))
 		sb.WriteString(fmt.Sprintf("公网   %s\n", publicIP))
 		sb.WriteString(fmt.Sprintf("内网   %s\n\n", privateIP))
 	}
@@ -432,7 +342,6 @@ func (m *Manager) handleCmdSMSInbox(cmdCtx CommandContext, args []string) string
 }
 
 // handleCmdEsim 处理 /esim 命令，列出设备上的 eSIM profiles
-// 命令格式: /esim [设备ID]
 func (m *Manager) handleCmdEsim(cmdCtx CommandContext, args []string) string {
 	var deviceID string
 	workers := m.pool.GetAllWorkers()
@@ -508,7 +417,6 @@ func (m *Manager) handleCmdEsim(cmdCtx CommandContext, args []string) string {
 }
 
 // handleCmdSwitch 处理 /switch 命令，切换 eSIM profile
-// 命令格式: /switch <设备ID> <序号或ICCID>
 func (m *Manager) handleCmdSwitch(cmdCtx CommandContext, args []string) string {
 	if len(args) < 2 {
 		return commandUsageBlock("切换 eSIM", "/switch [设备ID] [序号或ICCID]", "/switch ec20_1 2")
@@ -525,13 +433,11 @@ func (m *Manager) handleCmdSwitch(cmdCtx CommandContext, args []string) string {
 		return commandFailureBlock("切换 eSIM", deviceID, "设备不支持 eSIM")
 	}
 
-	// 获取当前 profiles 列表（用于序号匹配和获取 aidHex）
 	profileGroups, err := worker.EsimMgr.GetProfiles()
 	if err != nil {
 		return fmt.Sprintf("❌ 获取 eSIM profiles 失败: %v", err)
 	}
 
-	// 将所有 profiles 展平为有序列表，同时记录每个 profile 的 aidHex
 	type flatProfile struct {
 		iccid  string
 		name   string
@@ -552,11 +458,9 @@ func (m *Manager) handleCmdSwitch(cmdCtx CommandContext, args []string) string {
 		return commandFailureBlock("切换 eSIM", deviceID, "没有可用的 eSIM 配置")
 	}
 
-	// 解析目标：序号或 ICCID
 	var targetProfile flatProfile
 	var found bool
 
-	// 先尝试解析为序号
 	if num, err := fmt.Sscanf(target, "%d", new(int)); err == nil && num == 1 {
 		var idx int
 		fmt.Sscanf(target, "%d", &idx)
@@ -568,7 +472,6 @@ func (m *Manager) handleCmdSwitch(cmdCtx CommandContext, args []string) string {
 		}
 	}
 
-	// 未通过序号找到，尝试按 ICCID 匹配
 	if !found {
 		for _, p := range allProfiles {
 			if p.iccid == target || strings.HasSuffix(p.iccid, target) {
@@ -588,7 +491,6 @@ func (m *Manager) handleCmdSwitch(cmdCtx CommandContext, args []string) string {
 		profileName = "未命名"
 	}
 
-	// 异步执行切卡
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -597,96 +499,10 @@ func (m *Manager) handleCmdSwitch(cmdCtx CommandContext, args []string) string {
 			cmdCtx.Reply(fmt.Sprintf("❌ eSIM 切换失败 [%s]\nProfile: %s\nICCID: %s\n错误: %v",
 				deviceID, profileName, targetProfile.iccid, err))
 		} else {
-
 			cmdCtx.Reply(fmt.Sprintf("✅ eSIM 切换成功 [%s]\n新 Profile: %s\nICCID: %s\n",
 				deviceID, profileName, targetProfile.iccid))
 		}
 	}()
 
 	return switchAcceptedBlock(deviceID, profileName)
-}
-
-// broadcast 向所有通知渠道广播消息
-func (m *Manager) broadcast(text string) {
-	m.broadcastWithContext(NotificationContext{
-		Event:     "raw",
-		Text:      text,
-		Timestamp: time.Now(),
-	})
-}
-
-// handleCmdCall 处理 /vocall 命令，用于发起无头模拟呼叫
-// 命令格式: /vocall <设备ID> <号码> [保持秒数]
-func (m *Manager) handleCmdCall(cmdCtx CommandContext, args []string) string {
-	if len(args) < 2 || len(args) > 3 {
-		return commandUsageBlock("发起 VoWiFi 呼叫", "/vocall [设备ID] [接收号码] [保持秒数(可选)]", "/vocall ec20_1 888 15")
-	}
-
-	deviceID := args[0]
-	callee := args[1]
-	holdSeconds := voicehost.DefaultSimulateCallHoldSeconds
-	if len(args) == 3 {
-		parsedHold, err := strconv.Atoi(strings.TrimSpace(args[2]))
-		if err != nil || parsedHold <= 0 {
-			return fmt.Sprintf("发起 VoWiFi 呼叫 / 参数错误\n保持秒数  %s\n要求      正整数", args[2])
-		}
-		if parsedHold > voicehost.MaxSimulateCallHoldSeconds {
-			parsedHold = voicehost.MaxSimulateCallHoldSeconds
-		}
-		holdSeconds = parsedHold
-	}
-
-	worker := m.pool.GetWorker(deviceID)
-	if worker == nil {
-		return fmt.Sprintf("发起 VoWiFi 呼叫 / 失败\n设备    %s\n原因    设备未找到", deviceID)
-	}
-
-	voiceGW := m.pool.GetVoiceGateway()
-	if voiceGW == nil || voiceGW.GetAgent(deviceID) == nil {
-		return fmt.Sprintf("发起 VoWiFi 呼叫 / 失败\n设备    %s\n原因    VoWiFi 未就绪", deviceID)
-	}
-
-	displayName := worker.ID
-	if worker.Config.Name != "" {
-		displayName = fmt.Sprintf("%s (%s)", worker.Config.Name, worker.ID)
-	}
-	caller := "未知"
-	if worker.Modem != nil {
-		if imsi := strings.TrimSpace(worker.GetIMSI()); imsi != "" {
-			if phone, err := db.GetSIMCardPhoneNumberByIMSI(imsi); err == nil && strings.TrimSpace(phone) != "" {
-				caller = strings.TrimSpace(phone)
-			}
-		}
-	}
-
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-
-		req := voicehost.SimulateCallRequest{
-			Callee:      callee,
-			HoldSeconds: holdSeconds,
-			OnConnected: func() {
-				cmdCtx.Reply(fmt.Sprintf("发起 VoWiFi 呼叫 / 已接通\n设备    %s\n主叫    %s\n被叫    %s\n保持    %d 秒", displayName, caller, callee, holdSeconds))
-			},
-		}
-
-		res, err := voiceGW.SimulateCall(ctx, deviceID, req)
-		if err != nil {
-			cmdCtx.Reply(fmt.Sprintf("发起 VoWiFi 呼叫 / 失败\n设备    %s\n主叫    %s\n被叫    %s\n原因    %v", displayName, caller, callee, err))
-			return
-		}
-
-		if res.Success {
-			durationSeconds := res.DurationMs / 1000
-			if res.DurationMs > 0 && durationSeconds == 0 {
-				durationSeconds = 1
-			}
-			cmdCtx.Reply(fmt.Sprintf("发起 VoWiFi 呼叫 / 完成\n设备    %s\n主叫    %s\n被叫    %s\n时长    %d 秒", displayName, caller, callee, durationSeconds))
-		} else {
-			cmdCtx.Reply(fmt.Sprintf("发起 VoWiFi 呼叫 / 未接通\n设备    %s\n主叫    %s\n被叫    %s\n原因    %s", displayName, caller, callee, res.Reason))
-		}
-	}()
-
-	return fmt.Sprintf("发起 VoWiFi 呼叫 / 已受理\n设备    %s\n主叫    %s\n被叫    %s\n保持    %d 秒", displayName, caller, callee, holdSeconds)
 }

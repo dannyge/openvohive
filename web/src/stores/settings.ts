@@ -9,8 +9,6 @@ import {
   type SystemInfo,
   type TestWebhookResponse,
   type WebhookSettings,
-  type BarkSettings,
-  type TestBarkResponse,
   type TestEmailResponse
 } from '../services/system'
 
@@ -40,20 +38,7 @@ type TelegramForm = {
   proxy: string
 }
 
-type FeishuForm = {
-  enabled: boolean
-  app_id: string
-  app_secret: string
-  chat_ids: string
-}
 
-type QQForm = {
-  enabled: boolean
-  app_id: string
-  app_secret: string
-  group_ids: string
-  direct_ids: string
-}
 
 type EmailForm = {
   enabled: boolean
@@ -66,12 +51,6 @@ type EmailForm = {
   to_addresses: string
 }
 
-type PushplusForm = {
-  enabled: boolean
-  token: string
-  topic: string
-  channel: string
-}
 
 const DEFAULT_PASSWORD_FORM: PasswordForm = {
   old_password: '',
@@ -88,21 +67,6 @@ const DEFAULT_TELEGRAM_FORM: TelegramForm = {
   proxy: ''
 }
 
-const DEFAULT_FEISHU_FORM: FeishuForm = {
-  enabled: false,
-  app_id: '',
-  app_secret: '',
-  chat_ids: ''
-}
-
-const DEFAULT_QQ_FORM: QQForm = {
-  enabled: false,
-  app_id: '',
-  app_secret: '',
-  group_ids: '',
-  direct_ids: ''
-}
-
 const DEFAULT_EMAIL_FORM: EmailForm = {
   enabled: false,
   use_ssl: false,
@@ -112,13 +76,6 @@ const DEFAULT_EMAIL_FORM: EmailForm = {
   password: '',
   from_address: '',
   to_addresses: ''
-}
-
-const DEFAULT_PUSHPLUS_FORM: PushplusForm = {
-  enabled: false,
-  token: '',
-  topic: '',
-  channel: 'wechat'
 }
 
 const DEFAULT_WEBHOOK_SETTINGS: WebhookSettings = {
@@ -146,31 +103,18 @@ function sanitizeWebhookHeaders(headers: Record<string, string> | undefined): Re
   return out
 }
 
-const DEFAULT_BARK_SETTINGS: BarkSettings = {
-  enabled: false,
-  urls: [],
-  group: 'vohive',
-  icon: '',
-  level: 'active'
-}
-
 export const useSettingsStore = defineStore('settings', () => {
   const systemInfo = ref<SystemInfo>({ ...DEFAULT_SYSTEM_INFO })
   const notifications = ref<NotificationsSettingsResponse>({})
   const passwordForm = ref<PasswordForm>({ ...DEFAULT_PASSWORD_FORM })
   const telegramForm = ref<TelegramForm>({ ...DEFAULT_TELEGRAM_FORM })
-  const feishuForm = ref<FeishuForm>({ ...DEFAULT_FEISHU_FORM })
-  const qqForm = ref<QQForm>({ ...DEFAULT_QQ_FORM })
   const webhookSettings = ref<WebhookSettings>({ ...DEFAULT_WEBHOOK_SETTINGS })
-  const barkSettings = ref<BarkSettings>({ ...DEFAULT_BARK_SETTINGS })
   const emailForm = ref<EmailForm>({ ...DEFAULT_EMAIL_FORM })
-  const pushplusForm = ref<PushplusForm>({ ...DEFAULT_PUSHPLUS_FORM })
 
   const loadingSystemInfo = ref(false)
   const loadingNotifications = ref(false)
   const savingNotifications = ref(false)
   const testingWebhook = ref(false)
-  const testingBark = ref(false)
   const testingEmail = ref(false)
   const changingPassword = ref(false)
 
@@ -195,8 +139,6 @@ export const useSettingsStore = defineStore('settings', () => {
     if (result.ok) {
       notifications.value = result.data || {}
       const tg = result.data.telegram || {}
-      const fs = result.data.feishu || {}
-      const qq = result.data.qq || {}
       const webhook = result.data.webhook || {}
       telegramForm.value = {
         enabled: !!tg.enabled,
@@ -206,19 +148,6 @@ export const useSettingsStore = defineStore('settings', () => {
         base_url: tg.base_url || '',
         proxy: tg.proxy || ''
       }
-      feishuForm.value = {
-        enabled: !!fs.enabled,
-        app_id: fs.app_id || '',
-        app_secret: fs.app_secret || '',
-        chat_ids: Array.isArray(fs.chat_ids) ? fs.chat_ids.join(',') : ''
-      }
-      qqForm.value = {
-        enabled: !!qq.enabled,
-        app_id: qq.app_id || '',
-        app_secret: qq.app_secret || '',
-        group_ids: qq.group_ids || '',
-        direct_ids: qq.direct_ids || ''
-      }
       webhookSettings.value = {
         enabled: !!webhook.enabled,
         urls: Array.isArray(webhook.urls) ? webhook.urls : [],
@@ -227,14 +156,6 @@ export const useSettingsStore = defineStore('settings', () => {
         retry_max: webhook.retry_max ?? 3,
         text_template: webhook.text_template ?? '{{device_label}} {{text}}',
         headers: webhook.headers && typeof webhook.headers === 'object' ? { ...webhook.headers } : {}
-      }
-      const bark = result.data.bark || {}
-      barkSettings.value = {
-        enabled: !!bark.enabled,
-        urls: Array.isArray(bark.urls) ? bark.urls : [],
-        group: bark.group || 'vohive',
-        icon: bark.icon || '',
-        level: bark.level || 'active'
       }
       const email = result.data.email || {}
       emailForm.value = {
@@ -246,13 +167,6 @@ export const useSettingsStore = defineStore('settings', () => {
         password: email.password || '',
         from_address: email.from_address || '',
         to_addresses: Array.isArray(email.to_addresses) ? email.to_addresses.join(',') : ''
-      }
-      const pushplus = result.data.pushplus || {}
-      pushplusForm.value = {
-        enabled: !!pushplus.enabled,
-        token: pushplus.token || '',
-        topic: pushplus.topic || '',
-        channel: pushplus.channel || 'wechat'
       }
       error.value = null
     } else {
@@ -282,21 +196,6 @@ export const useSettingsStore = defineStore('settings', () => {
         base_url: telegramForm.value.base_url || '',
         proxy: telegramForm.value.proxy || ''
       },
-      feishu: {
-        enabled: !!feishuForm.value.enabled,
-        app_id: feishuForm.value.app_id || '',
-        app_secret: feishuForm.value.app_secret || '',
-        chat_ids: feishuForm.value.chat_ids
-          ? feishuForm.value.chat_ids.split(',').map(s => s.trim()).filter(Boolean)
-          : []
-      },
-      qq: {
-        enabled: !!qqForm.value.enabled,
-        app_id: qqForm.value.app_id || '',
-        app_secret: qqForm.value.app_secret || '',
-        group_ids: qqForm.value.group_ids || '',
-        direct_ids: qqForm.value.direct_ids || ''
-      },
       email: {
         enabled: !!emailForm.value.enabled,
         use_ssl: !!emailForm.value.use_ssl,
@@ -309,12 +208,6 @@ export const useSettingsStore = defineStore('settings', () => {
           ? emailForm.value.to_addresses.split(',').map(s => s.trim()).filter(Boolean)
           : []
       },
-      pushplus: {
-        enabled: !!pushplusForm.value.enabled,
-        token: pushplusForm.value.token || '',
-        topic: pushplusForm.value.topic || '',
-        channel: pushplusForm.value.channel || ''
-      },
       webhook: {
         enabled: !!webhookSettings.value.enabled,
         urls: Array.isArray(webhookSettings.value.urls) ? webhookSettings.value.urls : [],
@@ -324,13 +217,6 @@ export const useSettingsStore = defineStore('settings', () => {
         text_template: String(webhookSettings.value.text_template || ''),
         headers: sanitizeWebhookHeaders(webhookSettings.value.headers)
       },
-      bark: {
-        enabled: !!barkSettings.value.enabled,
-        urls: Array.isArray(barkSettings.value.urls) ? barkSettings.value.urls : [],
-        group: String(barkSettings.value.group || '').trim(),
-        icon: String(barkSettings.value.icon || '').trim(),
-        level: String(barkSettings.value.level || '').trim()
-      }
     }
   }
 
@@ -359,24 +245,6 @@ export const useSettingsStore = defineStore('settings', () => {
     return result as { ok: true; data: TestWebhookResponse } | { ok: false; error: AppError }
   }
 
-  async function testBarkFromForm() {
-    testingBark.value = true
-    const payload = {
-      enabled: !!barkSettings.value.enabled,
-      urls: (Array.isArray(barkSettings.value.urls) ? barkSettings.value.urls : [])
-        .map(s => String(s || '').trim())
-        .filter(Boolean),
-      group: String(barkSettings.value.group || '').trim(),
-      icon: String(barkSettings.value.icon || '').trim(),
-      level: String(barkSettings.value.level || '').trim()
-    }
-    const result = await systemService.testBark(payload)
-    if (!result.ok) {
-      error.value = result.error
-    }
-    testingBark.value = false
-    return result as { ok: true; data: TestBarkResponse } | { ok: false; error: AppError }
-  }
 
   async function testEmailFromForm() {
     testingEmail.value = true
@@ -423,17 +291,12 @@ export const useSettingsStore = defineStore('settings', () => {
     notifications,
     passwordForm,
     telegramForm,
-    feishuForm,
-    qqForm,
     webhookSettings,
-    barkSettings,
     emailForm,
-    pushplusForm,
     loadingSystemInfo,
     loadingNotifications,
     savingNotifications,
     testingWebhook,
-    testingBark,
     testingEmail,
     changingPassword,
     error,
@@ -442,7 +305,6 @@ export const useSettingsStore = defineStore('settings', () => {
     saveNotifications,
     saveNotificationsFromForms,
     testWebhookFromForm,
-    testBarkFromForm,
     testEmailFromForm,
     changePassword,
     changePasswordFromForm,

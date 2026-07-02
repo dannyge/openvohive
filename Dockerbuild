@@ -1,0 +1,16 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_NAME="$(basename "$SCRIPT_DIR")"
+
+trap 'echo "Error at line $LINENO (command: $BASH_COMMAND)" >&2' ERR
+
+echo "Building Go binary for ${PROJECT_NAME}..."
+go generate ./...
+CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o ./app -trimpath .
+echo "Go build finished."
+
+echo "Building Docker image ${PROJECT_NAME}:latest..."
+docker build -t "${PROJECT_NAME}:latest" -f Dockerfile .
+echo "Docker image built."

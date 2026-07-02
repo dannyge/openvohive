@@ -27,19 +27,6 @@ type OmaCPConfig struct {
 	Characteristics []OmaCPCharacteristic // 顶层特征列表
 }
 
-// ── UDH 端口检测 ─────────────────────────────────────────────────
-
-// extractUDHDestPort16 从 UDH 中提取 16 位目标端口号
-// UDH IE ID 0x05 = Application Port Addressing (16-bit)
-func extractUDHDestPort16(udh tpdu.UserDataHeader) (uint16, bool) {
-	for _, ie := range udh {
-		if ie.ID == 0x05 && len(ie.Data) >= 4 {
-			return uint16(ie.Data[0])<<8 | uint16(ie.Data[1]), true
-		}
-	}
-	return 0, false
-}
-
 // IsOmaCPMessage 检测 TPDU 是否为 OMA CP 配置短信（通过 UDH 目标端口 2948 判断）
 func IsOmaCPMessage(udh tpdu.UserDataHeader) bool {
 	port, ok := parseUDHPorts(udh).preferredDestPort()

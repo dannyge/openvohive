@@ -13,7 +13,6 @@ import {
   SignOut24Regular,
   Board24Regular,
   Phone24Regular,
-  Globe24Regular,
   DocumentText24Regular
 } from '@vicons/fluent'
 
@@ -38,7 +37,6 @@ const DebugPanel = defineAsyncComponent(() => import('../components/DebugPanel.v
 const menuItems = [
   { index: '/', label: '仪表盘', icon: Board24Regular },
   { index: '/devices', label: '设备管理', icon: Phone24Regular },
-  { index: '/proxy', label: '代理管理', icon: Globe24Regular },
   { index: '/sms', label: '短信中心', icon: Mail24Regular },
   { index: '/logs', label: '实时日志', icon: DocumentText24Regular },
   { index: '/settings', label: '系统设置', icon: Settings24Regular }

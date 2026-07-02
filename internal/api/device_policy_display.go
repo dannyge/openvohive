@@ -3,40 +3,24 @@ package api
 import (
 	"errors"
 
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/internal/db"
+	"github.com/openvohive/openvohive/internal/db"
 )
-
-// cardPolicyFromDeviceConfig 把设备保存 DTO 解析出的策略字段映射为 card_policies 行。
-// SMS 不入策略（恒开），source 标记为 user（人工编辑）。不变式由 db.UpsertCardPolicy 归一。
-func cardPolicyFromDeviceConfig(iccid string, cfg config.DeviceConfig) db.CardPolicy {
-	return db.CardPolicy{
-		ICCID:           iccid,
-		NetworkEnabled:  cfg.NetworkEnabled,
-		VoWiFiEnabled:   cfg.VoWiFiEnabled,
-		AirplaneEnabled: cfg.AirplaneEnabled,
-		IPVersion:       cfg.IPVersion,
-		APN:             cfg.APN,
-		Source:          "user",
-	}
-}
 
 // currentEffectiveDevicePolicy 返回设备保存前的旧有效策略（用于开关转换判断）：
 // 在线取 worker 投影(已是有效值)，离线退回 card_policies 解析。同时返回解析到的 ICCID。
-func (s *Server) currentEffectiveDevicePolicy(deviceID string) (iccid string, network, vowifi bool, ipVersion, apn string) {
+func (s *Server) currentEffectiveDevicePolicy(deviceID string) (iccid string, network bool, ipVersion, apn string) {
 	if s.pool != nil {
 		if w := s.pool.GetWorker(deviceID); w != nil {
-			return w.CurrentICCID(), w.Config.NetworkEnabled, w.Config.VoWiFiEnabled, w.Config.IPVersion, w.Config.APN
+			return w.CurrentICCID(), w.Config.NetworkEnabled, w.Config.IPVersion, w.Config.APN
 		}
 	}
 	off := resolveOfflineDevicePolicy(deviceID)
-	return db.CurrentICCIDForDevice(deviceID), off.NetworkEnabled, off.VoWiFiEnabled, off.IPVersion, off.APN
+	return db.CurrentICCIDForDevice(deviceID), off.NetworkEnabled, off.IPVersion, off.APN
 }
 
 // offlineDevicePolicy 是离线设备(无运行中 worker)用于展示的有效卡策略。
 type offlineDevicePolicy struct {
 	NetworkEnabled bool
-	VoWiFiEnabled  bool
 	SMSEnabled     bool
 	IPVersion      string
 	APN            string
@@ -59,7 +43,6 @@ func resolveOfflineDevicePolicy(deviceID string) offlineDevicePolicy {
 		return out
 	}
 	out.NetworkEnabled = pol.NetworkEnabled
-	out.VoWiFiEnabled = pol.VoWiFiEnabled
 	if pol.IPVersion != "" {
 		out.IPVersion = pol.IPVersion
 	}

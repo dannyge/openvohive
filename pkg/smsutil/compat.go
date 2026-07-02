@@ -3,15 +3,17 @@ package smsutil
 import (
 	"time"
 
-	"github.com/iniwex5/vohive/pkg/smscodec"
+	"github.com/openvohive/openvohive/pkg/smscodec"
 	"github.com/warthog618/sms/encoding/tpdu"
 )
 
-type RPDUKind = smscodec.RPDUKind
-type RPDUInfo = smscodec.RPDUInfo
-type ConcatInfo = smscodec.ConcatInfo
-type OmaCPCharacteristic = smscodec.OmaCPCharacteristic
-type OmaCPConfig = smscodec.OmaCPConfig
+type (
+	RPDUKind            = smscodec.RPDUKind
+	RPDUInfo            = smscodec.RPDUInfo
+	ConcatInfo          = smscodec.ConcatInfo
+	OmaCPCharacteristic = smscodec.OmaCPCharacteristic
+	OmaCPConfig         = smscodec.OmaCPConfig
+)
 
 const (
 	RPDUKindUnknown         = smscodec.RPDUKindUnknown
@@ -44,18 +46,23 @@ func IsShortCode(phone string) bool { return smscodec.IsShortCode(phone) }
 func BuildSubmitTPDUs(to, text string) ([][]byte, []int, error) {
 	return smscodec.BuildSubmitTPDUs(to, text)
 }
+
 func ParseATSMSHeaderTPDULength(header string) (int, bool) {
 	return smscodec.ParseATSMSHeaderTPDULength(header)
 }
+
 func TrimFullPDUHexByATHeader(pduHex, header string) (string, bool) {
 	return smscodec.TrimFullPDUHexByATHeader(pduHex, header)
 }
+
 func TrimFullPDUHexByTPDULength(pduHex string, tpduLen int) (string, bool) {
 	return smscodec.TrimFullPDUHexByTPDULength(pduHex, tpduLen)
 }
+
 func TrimDeliverTPDUToDeclaredLength(tpduBytes []byte) ([]byte, bool) {
 	return smscodec.TrimDeliverTPDUToDeclaredLength(tpduBytes)
 }
+
 func DeliverTPDUDeclaredLength(tpduBytes []byte) (int, bool) {
 	return smscodec.DeliverTPDUDeclaredLength(tpduBytes)
 }

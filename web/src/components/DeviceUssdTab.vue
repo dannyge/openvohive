@@ -5,7 +5,6 @@ import { devicesService } from '../services/devices'
 
 const props = defineProps<{
   deviceId: string
-  vowifiActive?: boolean
 }>()
 
 const ussdCmd = ref('')
@@ -165,7 +164,7 @@ function clearHistory() {
           <div class="text-[10px] mt-1 text-gray-400 flex items-center gap-2">
             <span>{{ new Date(msg.ts).toLocaleTimeString() }}</span>
             <span v-if="msg.dcs !== undefined" class="bg-gray-100 dark:bg-gray-700 px-1 rounded">DCS: {{ msg.dcs }}</span>
-            <span v-if="msg.channel" class="bg-gray-100 dark:bg-gray-700 px-1 rounded">{{ msg.channel === 'vowifi' ? 'VoWiFi' : 'CS' }}</span>
+            <span v-if="msg.channel" class="bg-gray-100 dark:bg-gray-700 px-1 rounded">CS</span>
           </div>
         </div>
       </div>

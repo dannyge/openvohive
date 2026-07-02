@@ -6,32 +6,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iniwex5/vohive/internal/backend"
-	"github.com/iniwex5/vohive/internal/config"
-	"github.com/iniwex5/vohive/pkg/logger"
+	"github.com/openvohive/openvohive/internal/config"
+	"github.com/openvohive/openvohive/pkg/logger"
 )
 
-var qmiControlStatFn = os.Stat
-var qmiRecoveryControlStableInterval = 1200 * time.Millisecond
-
-func workerATProbeOK(w *Worker, timeout time.Duration) bool {
-	if w != nil {
-		if resolvedBackendMode(w.Config) == backend.BackendQMI {
-			return true
-		}
-		if w.Backend != nil && w.Backend.Mode() == backend.BackendQMI {
-			return true
-		}
-	}
-	if w == nil || w.Modem == nil || !w.Modem.HasATPort() {
-		return true
-	}
-	if !w.Modem.CanExecuteAT() {
-		return false
-	}
-	_, err := w.Modem.ExecuteATSilent("AT", timeout)
-	return err == nil
-}
+var (
+	qmiControlStatFn                 = os.Stat
+	qmiRecoveryControlStableInterval = 1200 * time.Millisecond
+)
 
 func (p *Pool) refreshModemRebootRecoveredIdentity(w *Worker, reason string) error {
 	if w == nil {
@@ -397,26 +379,6 @@ func (p *Pool) scheduleWorkerRecoveryWithTransportEvent(deviceID string, reason 
 	}
 	go p.runModemRebootRecovery(opts)
 	return true
-}
-
-func (p *Pool) scheduleWorkerRecovery(deviceID string, reason string) {
-	deviceID = strings.TrimSpace(deviceID)
-	reason = strings.TrimSpace(reason)
-	if p == nil || deviceID == "" {
-		return
-	}
-	if reason == "" {
-		reason = "worker_recovery"
-	}
-	if worker := p.GetWorker(deviceID); worker != nil {
-		worker.RecordWatchdogEvent(WatchdogEvent{
-			Layer:     HealthLayerPool,
-			State:     HealthStateReprobing,
-			EventType: "worker_reprobe",
-			Reason:    reason,
-		})
-	}
-	p.ScheduleModemRebootRecovery(deviceID, reason)
 }
 
 func (p *Pool) scheduleATDisconnectRecovery(deviceID string, reason string) {

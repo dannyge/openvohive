@@ -79,12 +79,6 @@ func LookupIMSIByReader(reader string) (string, bool) {
 	return imsi, true
 }
 
-func clearReaderIMSIBindings() {
-	readerIMSIRegistry.mu.Lock()
-	clear(readerIMSIRegistry.m)
-	readerIMSIRegistry.mu.Unlock()
-}
-
 // fixedWidthColorLevelEncoder 固定宽度（5字符）的彩色日志等级编码器
 func fixedWidthColorLevelEncoder(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 	s := level.CapitalString()
