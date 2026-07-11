@@ -56,6 +56,15 @@ export type NotificationsSettingsResponse = {
   telegram?: Partial<TelegramSettings>
   email?: Partial<EmailSettings>
   webhook?: Partial<WebhookSettings>
+  bark?: {
+    enabled: boolean
+    server_url: string
+    device_key: string
+    title: string
+    group: string
+    sound: string
+    timeout_ms: number
+  }
 }
 
 export type SaveNotificationsPayload = {
@@ -85,6 +94,15 @@ export type SaveNotificationsPayload = {
     retry_max: number
     text_template: string
     headers?: Record<string, string>
+  }
+  bark: {
+    enabled: boolean
+    server_url: string
+    device_key: string
+    title: string
+    group: string
+    sound: string
+    timeout_ms: number
   }
 }
 

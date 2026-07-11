@@ -16,7 +16,7 @@ import {
 } from '@vicons/fluent'
 
 const settingsStore = useSettingsStore()
-const { systemInfo, loadingNotifications, savingNotifications, testingWebhook, testingEmail, changingPassword, passwordForm, telegramForm, webhookSettings, emailForm } = storeToRefs(settingsStore)
+const { systemInfo, loadingNotifications, savingNotifications, testingWebhook, testingEmail, changingPassword, passwordForm, telegramForm, webhookSettings, emailForm, barkForm } = storeToRefs(settingsStore)
 const activeNotifyTab = ref('telegram')
 
 
@@ -37,6 +37,10 @@ const hasValidEmailConfig = computed(() => {
     emailForm.value.from_address &&
     emailForm.value.to_addresses
   )
+})
+
+const hasValidBarkConfig = computed(() => {
+  return !!barkForm.value.device_key
 })
 
 
@@ -329,7 +333,7 @@ onBeforeUnmount(() => {
                </div>
                <div>
                   <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">通知</h3>
-                  <p class="text-xs text-gray-500">Telegram / Webhook / Email</p>
+                  <p class="text-xs text-gray-500">Telegram / Webhook / Email / Bark</p>
                </div>
             </div>
             <el-button type="primary" :loading="savingNotifications" :disabled="loadingNotifications" @click="saveNotifications" class="!border-0">
@@ -546,6 +550,47 @@ onBeforeUnmount(() => {
                     <div class="space-y-1">
                       <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">最大重试次数</label>
                       <el-input-number v-model="webhookSettings.retry_max" :min="0" :max="10" :disabled="!webhookSettings.enabled" class="w-full !w-full" controls-position="right" />
+                    </div>
+                  </div>
+                </div>
+              </el-tab-pane>
+
+              <!-- Bark -->
+              <el-tab-pane label="Bark" name="bark" class="pt-2">
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-2">
+                    <div class="font-bold text-gray-800 dark:text-gray-100">启用 Bark 推送</div>
+                  </div>
+                  <el-switch v-model="barkForm.enabled" />
+                </div>
+
+                <div class="space-y-4">
+                  <div class="space-y-1">
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">服务器地址 (Server URL)</label>
+                    <el-input v-model="barkForm.server_url" :disabled="!barkForm.enabled" placeholder="https://api.day.app（官方）或 http://your-ip:port（自建）" />
+                  </div>
+                  <div class="space-y-1">
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">设备密钥 (Device Key)</label>
+                    <el-input v-model="barkForm.device_key" :disabled="!barkForm.enabled" type="password" show-password placeholder="Bark App 中复制的 Key" />
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="space-y-1">
+                      <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">标题 (Title)</label>
+                      <el-input v-model="barkForm.title" :disabled="!barkForm.enabled" placeholder="openvohive" />
+                    </div>
+                    <div class="space-y-1">
+                      <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">分组 (Group)</label>
+                      <el-input v-model="barkForm.group" :disabled="!barkForm.enabled" placeholder="可选" />
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="space-y-1">
+                      <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">声音 (Sound)</label>
+                      <el-input v-model="barkForm.sound" :disabled="!barkForm.enabled" placeholder="可选" />
+                    </div>
+                    <div class="space-y-1">
+                      <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">超时 (ms)</label>
+                      <el-input v-model="barkForm.timeout_ms" :disabled="!barkForm.enabled" type="number" inputmode="numeric" placeholder="5000" />
                     </div>
                   </div>
                 </div>
