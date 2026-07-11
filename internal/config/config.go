@@ -73,6 +73,7 @@ type Config struct {
 	Telegram     TelegramConfig     `mapstructure:"telegram"`
 	Webhook      WebhookConfig      `mapstructure:"webhook"`
 	Email        EmailConfig        `mapstructure:"email"`
+	Bark         BarkConfig         `mapstructure:"bark"`
 	Web          WebConfig          `mapstructure:"web"`
 }
 
@@ -175,6 +176,18 @@ type EmailConfig struct {
 	ToAddresses []string `mapstructure:"to_addresses"`
 }
 
+// BarkConfig 定义 Bark 推送通知渠道的配置
+// Bark 是 iOS 推送工具，支持官方 api.day.app 或自建 bark-server
+type BarkConfig struct {
+	Enabled   bool   `mapstructure:"enabled"`
+	ServerURL string `mapstructure:"server_url"` // 服务器地址，默认 https://api.day.app，可自建
+	DeviceKey string `mapstructure:"device_key"`  // Bark 设备 key
+	Title     string `mapstructure:"title"`       // 推送标题，默认 openvohive
+	Group     string `mapstructure:"group"`       // 推送分组，可选
+	Sound     string `mapstructure:"sound"`       // 提示音，可选
+	TimeoutMs int    `mapstructure:"timeout_ms"`  // 请求超时毫秒，默认 5000
+}
+
 func Load(path string) (*Config, error) {
 	if err := migrateLegacyManagedNetworkField(path); err != nil {
 		return nil, err
@@ -194,6 +207,9 @@ func Load(path string) (*Config, error) {
 
 	viper.SetDefault("email.enabled", false)
 	viper.SetDefault("email.use_ssl", false)
+	viper.SetDefault("bark.enabled", false)
+	viper.SetDefault("bark.server_url", "https://api.day.app")
+	viper.SetDefault("bark.timeout_ms", 5000)
 	viper.SetDefault("web.username", "admin")
 	viper.SetDefault("web.password", "admin")
 

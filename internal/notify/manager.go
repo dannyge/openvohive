@@ -97,6 +97,17 @@ func (m *Manager) initChannels(cfg *config.Config) error {
 		}
 	}
 
+	if cfg.Bark.Enabled {
+		bk, err := NewBarkChannel(cfg.Bark)
+		if err != nil {
+			logger.Error("初始化 Bark 渠道失败", "err", err)
+			return err
+		}
+		if bk != nil {
+			m.channels = append(m.channels, bk)
+		}
+	}
+
 	// 向所有渠道注册命令
 	m.registerCommands()
 

@@ -4,3 +4,11 @@ server:
 web:
     username: admin
     password: admin123
+bark:
+    enabled: false
+    # server_url: https://api.day.app  # 官方节点（默认）或自建 http://your-ip:port
+    # device_key: 你的BarkKey          # Bark App 里复制
+    # title: openvohive                # 推送标题（默认 openvohive）
+    # group: vohive                    # 推送分组（可选）
+    # sound: bell                      # 提示音（可选）
+    # timeout_ms: 5000                 # 请求超时毫秒
