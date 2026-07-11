@@ -51,6 +51,16 @@ type EmailForm = {
   to_addresses: string
 }
 
+type BarkForm = {
+  enabled: boolean
+  server_url: string
+  device_key: string
+  title: string
+  group: string
+  sound: string
+  timeout_ms: number | null
+}
+
 
 const DEFAULT_PASSWORD_FORM: PasswordForm = {
   old_password: '',
@@ -88,6 +98,16 @@ const DEFAULT_WEBHOOK_SETTINGS: WebhookSettings = {
   headers: {}
 }
 
+const DEFAULT_BARK_FORM: BarkForm = {
+  enabled: false,
+  server_url: 'https://api.day.app',
+  device_key: '',
+  title: 'openvohive',
+  group: '',
+  sound: '',
+  timeout_ms: 5000
+}
+
 // 受保护的系统头（小写），与后端保持一致：自定义头不可覆盖这些
 const PROTECTED_WEBHOOK_HEADERS = new Set(['content-type', 'x-vohive-signature'])
 
@@ -110,6 +130,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const telegramForm = ref<TelegramForm>({ ...DEFAULT_TELEGRAM_FORM })
   const webhookSettings = ref<WebhookSettings>({ ...DEFAULT_WEBHOOK_SETTINGS })
   const emailForm = ref<EmailForm>({ ...DEFAULT_EMAIL_FORM })
+  const barkForm = ref<BarkForm>({ ...DEFAULT_BARK_FORM })
 
   const loadingSystemInfo = ref(false)
   const loadingNotifications = ref(false)
@@ -168,6 +189,16 @@ export const useSettingsStore = defineStore('settings', () => {
         from_address: email.from_address || '',
         to_addresses: Array.isArray(email.to_addresses) ? email.to_addresses.join(',') : ''
       }
+      const bark = result.data.bark || {} as NonNullable<NotificationsSettingsResponse['bark']>
+      barkForm.value = {
+        enabled: !!bark.enabled,
+        server_url: bark.server_url || DEFAULT_BARK_FORM.server_url,
+        device_key: bark.device_key || '',
+        title: bark.title || DEFAULT_BARK_FORM.title,
+        group: bark.group || '',
+        sound: bark.sound || '',
+        timeout_ms: bark.timeout_ms ?? DEFAULT_BARK_FORM.timeout_ms
+      }
       error.value = null
     } else {
       error.value = result.error
@@ -216,6 +247,15 @@ export const useSettingsStore = defineStore('settings', () => {
         retry_max: Number(webhookSettings.value.retry_max) || 3,
         text_template: String(webhookSettings.value.text_template || ''),
         headers: sanitizeWebhookHeaders(webhookSettings.value.headers)
+      },
+      bark: {
+        enabled: !!barkForm.value.enabled,
+        server_url: barkForm.value.server_url || DEFAULT_BARK_FORM.server_url,
+        device_key: barkForm.value.device_key || '',
+        title: barkForm.value.title || DEFAULT_BARK_FORM.title,
+        group: barkForm.value.group || '',
+        sound: barkForm.value.sound || '',
+        timeout_ms: Number(barkForm.value.timeout_ms) || DEFAULT_BARK_FORM.timeout_ms as number
       },
     }
   }
@@ -293,6 +333,7 @@ export const useSettingsStore = defineStore('settings', () => {
     telegramForm,
     webhookSettings,
     emailForm,
+    barkForm,
     loadingSystemInfo,
     loadingNotifications,
     savingNotifications,
