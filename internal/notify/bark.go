@@ -16,14 +16,15 @@ import (
 )
 
 // barkPushPayload 定义推送给 Bark 服务器的 JSON 结构
+// 字段名遵循 Bark API V2 文档（https://github.com/Finb/bark-server/blob/master/docs/API_V2.md）
 type barkPushPayload struct {
-	DeviceKey         string `json:"device_key"`
-	Title             string `json:"title,omitempty"`
-	Body              string `json:"body"`
-	Copy              string `json:"copy,omitempty"`
-	AutomaticallyCopy string `json:"automatically_copy,omitempty"`
-	Group             string `json:"group,omitempty"`
-	Sound             string `json:"sound,omitempty"`
+	DeviceKey string `json:"device_key"`
+	Title     string `json:"title,omitempty"`
+	Body      string `json:"body"`
+	Copy      string `json:"copy,omitempty"`
+	AutoCopy  string `json:"autoCopy,omitempty"` // 值为 "1" 时自动复制 copy 字段到剪贴板
+	Group     string `json:"group,omitempty"`
+	Sound     string `json:"sound,omitempty"`
 }
 
 // 验证码提取的正则模式（按优先级排序）
@@ -131,8 +132,8 @@ func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
 		title = fmt.Sprintf("%s %s", c.title, label)
 	}
 
-	// 提取验证码
-	code := extractVerificationCode(ctx.Text)
+	// 从纯短信内容中提取验证码（不从完整通知文本提取，避免匹配到时间/号码等干扰数字）
+	code := extractVerificationCode(smsContent)
 
 	// 构建 copy 内容：优先验证码，其次短信正文
 	copyContent := code
@@ -141,13 +142,13 @@ func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
 	}
 
 	payload := barkPushPayload{
-		DeviceKey:         c.deviceKey,
-		Title:             title,
-		Body:              ctx.Text,
-		Copy:              copyContent,
-		AutomaticallyCopy: "1",
-		Group:             c.group,
-		Sound:             c.sound,
+		DeviceKey: c.deviceKey,
+		Title:     title,
+		Body:      ctx.Text,
+		Copy:      copyContent,
+		AutoCopy:  "1",
+		Group:     c.group,
+		Sound:     c.sound,
 	}
 
 	body, err := json.Marshal(payload)
