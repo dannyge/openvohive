@@ -43,6 +43,15 @@ type notificationSettingsResponse struct {
 		FromAddress string   `json:"from_address"`
 		ToAddresses []string `json:"to_addresses"`
 	} `json:"email"`
+	Bark struct {
+		Enabled   bool   `json:"enabled"`
+		ServerURL string `json:"server_url"`
+		DeviceKey string `json:"device_key"`
+		Title     string `json:"title"`
+		Group     string `json:"group"`
+		Sound     string `json:"sound"`
+		TimeoutMs int    `json:"timeout_ms"`
+	} `json:"bark"`
 }
 
 type updateNotificationSettingsRequest struct {
@@ -74,6 +83,15 @@ type updateNotificationSettingsRequest struct {
 		FromAddress string   `json:"from_address"`
 		ToAddresses []string `json:"to_addresses"`
 	} `json:"email"`
+	Bark struct {
+		Enabled   bool   `json:"enabled"`
+		ServerURL string `json:"server_url"`
+		DeviceKey string `json:"device_key"`
+		Title     string `json:"title"`
+		Group     string `json:"group"`
+		Sound     string `json:"sound"`
+		TimeoutMs int    `json:"timeout_ms"`
+	} `json:"bark"`
 }
 
 func (s *Server) handleGetNotificationSettings(c *gin.Context) {
@@ -101,6 +119,14 @@ func (s *Server) handleGetNotificationSettings(c *gin.Context) {
 	resp.Email.Password = s.fullCfg.Email.Password
 	resp.Email.FromAddress = s.fullCfg.Email.FromAddress
 	resp.Email.ToAddresses = append([]string(nil), s.fullCfg.Email.ToAddresses...)
+
+	resp.Bark.Enabled = s.fullCfg.Bark.Enabled
+	resp.Bark.ServerURL = s.fullCfg.Bark.ServerURL
+	resp.Bark.DeviceKey = s.fullCfg.Bark.DeviceKey
+	resp.Bark.Title = s.fullCfg.Bark.Title
+	resp.Bark.Group = s.fullCfg.Bark.Group
+	resp.Bark.Sound = s.fullCfg.Bark.Sound
+	resp.Bark.TimeoutMs = s.fullCfg.Bark.TimeoutMs
 
 	c.JSON(http.StatusOK, resp)
 }
@@ -175,7 +201,22 @@ func (s *Server) handleUpdateNotificationSettings(c *gin.Context) {
 		return
 	}
 
-	if err := config.UpdateNotificationInFile(s.configPath, tg, wh, em); err != nil {
+	bk := config.BarkConfig{
+		Enabled:   req.Bark.Enabled,
+		ServerURL: strings.TrimSpace(req.Bark.ServerURL),
+		DeviceKey: strings.TrimSpace(req.Bark.DeviceKey),
+		Title:     strings.TrimSpace(req.Bark.Title),
+		Group:     strings.TrimSpace(req.Bark.Group),
+		Sound:     strings.TrimSpace(req.Bark.Sound),
+		TimeoutMs: req.Bark.TimeoutMs,
+	}
+
+	if bk.Enabled && bk.DeviceKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Bark 启用时必须填写 device_key"})
+		return
+	}
+
+	if err := config.UpdateNotificationInFile(s.configPath, tg, wh, em, bk); err != nil {
 		logger.Error("写入通知配置失败", "err", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "写入配置文件失败: " + err.Error()})
 		return
@@ -184,6 +225,7 @@ func (s *Server) handleUpdateNotificationSettings(c *gin.Context) {
 	s.fullCfg.Telegram = tg
 	s.fullCfg.Webhook = wh
 	s.fullCfg.Email = em
+	s.fullCfg.Bark = bk
 
 	if s.notifyMgr != nil {
 		if err := s.notifyMgr.UpdateConfig(s.fullCfg); err != nil {

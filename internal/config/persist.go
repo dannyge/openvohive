@@ -8,7 +8,7 @@ import (
 	yaml "go.yaml.in/yaml/v3"
 )
 
-func UpdateNotificationInFile(path string, telegram TelegramConfig, webhook WebhookConfig, email EmailConfig) error {
+func UpdateNotificationInFile(path string, telegram TelegramConfig, webhook WebhookConfig, email EmailConfig, bark BarkConfig) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("读取配置文件失败: %w", err)
@@ -46,6 +46,16 @@ func UpdateNotificationInFile(path string, telegram TelegramConfig, webhook Webh
 		"password":     email.Password,
 		"from_address": email.FromAddress,
 		"to_addresses": email.ToAddresses,
+	}
+
+	root["bark"] = map[string]any{
+		"enabled":    bark.Enabled,
+		"server_url": bark.ServerURL,
+		"device_key": bark.DeviceKey,
+		"title":      bark.Title,
+		"group":      bark.Group,
+		"sound":      bark.Sound,
+		"timeout_ms": bark.TimeoutMs,
 	}
 
 	out, err := yaml.Marshal(root)
