@@ -2259,6 +2259,36 @@ components:
           $ref: '#/components/schemas/WebhookSettings'
         weixin:
           $ref: '#/components/schemas/WeixinSettings'
+        bark:
+          $ref: '#/components/schemas/BarkSettings'
+
+    BarkSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: 是否启用 Bark 推送
+        server_url:
+          type: string
+          description: Bark 服务器地址，默认 https://api.day.app（官方），可自建
+          example: https://api.day.app
+        device_key:
+          type: string
+          description: Bark 设备 key（Bark App 中获取）
+        title:
+          type: string
+          description: 推送标题，默认 openvohive
+          example: openvohive
+        group:
+          type: string
+          description: 推送分组（可选）
+        sound:
+          type: string
+          description: 提示音（可选）
+        timeout_ms:
+          type: integer
+          description: 请求超时毫秒
+          default: 5000
 
     UpdateNotificationSettingsRequest:
       allOf:

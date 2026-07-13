@@ -56,14 +56,21 @@ func extractVerificationCode(text string) string {
 
 // extractSMSContent 从通知文本中提取纯短信内容
 // 通知格式: "收到新短信 / 蜂窝\n设备  quectel-1\n号码  10086\n时间  ...\n内容  短信正文"
+// 短信正文可能跨多行，匹配到"内容"行后拼接其后的所有行
 func extractSMSContent(text string) string {
-	// 尝试提取"内容"字段
 	lines := strings.Split(text, "\n")
-	for _, line := range lines {
+	for i, line := range lines {
 		if strings.HasPrefix(strings.TrimSpace(line), "内容") {
 			// 去掉 "内容  " 前缀
 			content := strings.TrimPrefix(strings.TrimSpace(line), "内容")
 			content = strings.TrimSpace(strings.TrimPrefix(content, " "))
+			// 拼接后续行（多行短信正文）
+			if i+1 < len(lines) {
+				remaining := strings.Join(lines[i+1:], "\n")
+				if remaining != "" {
+					content = content + "\n" + remaining
+				}
+			}
 			return content
 		}
 	}
@@ -136,10 +143,12 @@ func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
 	// 从纯短信内容中提取验证码（不从完整通知文本提取，避免匹配到时间/号码等干扰数字）
 	code := extractVerificationCode(smsContent)
 
-	// 构建 copy 内容：优先验证码，其次短信正文
-	copyContent := code
-	if copyContent == "" {
-		copyContent = smsContent
+	// 构建 copy 和 autoCopy：仅在提取到验证码时才设 autoCopy（避免覆盖用户剪贴板）
+	copyContent := ""
+	autoCopy := ""
+	if code != "" {
+		copyContent = code
+		autoCopy = "1"
 	}
 
 	payload := barkPushPayload{
@@ -147,7 +156,7 @@ func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
 		Title:     title,
 		Body:      ctx.Text,
 		Copy:      copyContent,
-		AutoCopy:  "1",
+		AutoCopy:  autoCopy,
 		Group:     c.group,
 		Sound:     c.sound,
 	}
@@ -160,8 +169,9 @@ func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
 	url := fmt.Sprintf("%s/push", c.serverURL)
 
 	// 最多尝试 2 次（1 次原始请求 + 1 次重试），每次重新构建 request
+	const maxAttempts = 2
 	var lastErr error
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 		if err != nil {
 			return fmt.Errorf("bark 请求创建失败: %w", err)
@@ -171,8 +181,10 @@ func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
 		resp, err := c.client.Do(req)
 		if err != nil {
 			lastErr = err
-			logger.Warn("Bark 推送失败，重试中", "attempt", attempt+1, "err", err)
-			time.Sleep(time.Duration(attempt+1) * time.Second)
+			if attempt+1 < maxAttempts {
+				logger.Warn("Bark 推送失败，重试中", "attempt", attempt+1, "err", err)
+				time.Sleep(time.Duration(attempt+1) * time.Second)
+			}
 			continue
 		}
 		respBody, _ := io.ReadAll(resp.Body)
@@ -188,8 +200,10 @@ func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
 		}
 
 		lastErr = fmt.Errorf("bark 返回状态码 %d: %s", resp.StatusCode, string(respBody))
-		logger.Warn("Bark 推送返回非 2xx", "status", resp.StatusCode, "body", string(respBody))
-		time.Sleep(time.Duration(attempt+1) * time.Second)
+		if attempt+1 < maxAttempts {
+			logger.Warn("Bark 推送返回非 2xx，重试中", "status", resp.StatusCode, "body", string(respBody))
+			time.Sleep(time.Duration(attempt+1) * time.Second)
+		}
 	}
 
 	return lastErr
