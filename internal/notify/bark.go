@@ -32,8 +32,8 @@ type barkPushPayload struct {
 var verificationCodePatterns = []*regexp.Regexp{
 	// 中文：验证码[是为:]\s*(\d{4,8})
 	regexp.MustCompile(`验证码[是为：:]?\s*(\d{4,8})(?:\D|$)`),
-	// 中文变体：动态码/校验码/验证码
-	regexp.MustCompile(`(?:动态码|校验码|验证码)[：:=\s]*(\d{4,8})(?:\D|$)`),
+	// 中文变体：动态码/校验码/验证码 [是为:]\s*(\d{4,8})
+	regexp.MustCompile(`(?:动态码|校验码|验证码)[是为：:=]?\s*(\d{4,8})(?:\D|$)`),
 	// 英文：code[is:=]\s*(\d{4,8})
 	regexp.MustCompile(`(?i)code[\s:=]+(\d{4,8})(?:\D|$)`),
 	// 英文：OTP
@@ -92,7 +92,8 @@ type BarkChannel struct {
 
 // NewBarkChannel 根据配置创建 Bark 渠道
 func NewBarkChannel(cfg config.BarkConfig) (*BarkChannel, error) {
-	if cfg.DeviceKey == "" {
+	deviceKey := strings.TrimSpace(cfg.DeviceKey)
+	if deviceKey == "" {
 		return nil, errors.New("bark device_key 未配置")
 	}
 
@@ -113,7 +114,7 @@ func NewBarkChannel(cfg config.BarkConfig) (*BarkChannel, error) {
 
 	return &BarkChannel{
 		serverURL: serverURL,
-		deviceKey: cfg.DeviceKey,
+		deviceKey: deviceKey,
 		title:     title,
 		group:     strings.TrimSpace(cfg.Group),
 		sound:     strings.TrimSpace(cfg.Sound),

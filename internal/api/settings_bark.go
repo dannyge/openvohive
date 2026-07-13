@@ -38,10 +38,17 @@ func (s *Server) handleTestBarkNotification(c *gin.Context) {
 		serverURL = "https://api.day.app"
 	}
 
+	// device_key 为空是参数错误（400），而非服务端故障（500）
+	deviceKey := strings.TrimSpace(req.DeviceKey)
+	if deviceKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "请填写 Bark Device Key 后再测试"})
+		return
+	}
+
 	ch, err := notify.NewBarkChannel(config.BarkConfig{
 		Enabled:   true,
 		ServerURL: serverURL,
-		DeviceKey: strings.TrimSpace(req.DeviceKey),
+		DeviceKey: deviceKey,
 		Title:     strings.TrimSpace(req.Title),
 		Group:     strings.TrimSpace(req.Group),
 		Sound:     strings.TrimSpace(req.Sound),
