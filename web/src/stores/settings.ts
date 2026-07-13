@@ -189,7 +189,7 @@ export const useSettingsStore = defineStore('settings', () => {
         from_address: email.from_address || '',
         to_addresses: Array.isArray(email.to_addresses) ? email.to_addresses.join(',') : ''
       }
-      const bark = result.data.bark || {} as NonNullable<NotificationsSettingsResponse['bark']>
+      const bark = (result.data.bark || {}) as NonNullable<NotificationsSettingsResponse['bark']>
       barkForm.value = {
         enabled: !!bark.enabled,
         server_url: bark.server_url || DEFAULT_BARK_FORM.server_url,
@@ -255,7 +255,7 @@ export const useSettingsStore = defineStore('settings', () => {
         title: barkForm.value.title || DEFAULT_BARK_FORM.title,
         group: barkForm.value.group || '',
         sound: barkForm.value.sound || '',
-        timeout_ms: Number(barkForm.value.timeout_ms) || DEFAULT_BARK_FORM.timeout_ms as number
+        timeout_ms: (Number(barkForm.value.timeout_ms) || DEFAULT_BARK_FORM.timeout_ms) as number
       },
     }
   }

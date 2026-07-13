@@ -33,8 +33,10 @@ var verificationCodePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`验证码[是为：:]?\s*(\d{4,8})`),
 	// 英文：code[is:=]\s*(\d{4,8})（不区分大小写在编译时已设）
 	regexp.MustCompile(`(?i)code[\s:=]+(\d{4,8})`),
-	// 独立的 4-8 位数字（前后不是数字）
-	regexp.MustCompile(`(?:^|[^\d])(\d{4,8})(?:[^\d]|$)`),
+	// 中文变体：动态码/密码/验证\s*(\d{4,8})
+	regexp.MustCompile(`(?:动态码|密码|校验码|验证码)[：:=\s]*(\d{4,8})`),
+	// 英文变体：OTP/PIN/password\s*(\d{4,8})
+	regexp.MustCompile(`(?i)(?:OTP|PIN|password)[\s:=]+(\d{4,8})`),
 }
 
 // extractVerificationCode 从短信文本中提取验证码
