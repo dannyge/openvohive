@@ -202,6 +202,12 @@ func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
 		}
 
 		lastErr = fmt.Errorf("bark 返回状态码 %d: %s", resp.StatusCode, string(respBody))
+
+		// 4xx（非 429）是不可恢复错误（如 device_key 错误），不重试
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 429 {
+			return lastErr
+		}
+
 		if attempt+1 < maxAttempts {
 			logger.Warn("Bark 推送返回非 2xx，重试中", "status", resp.StatusCode, "body", string(respBody))
 			time.Sleep(time.Duration(attempt+1) * time.Second)
@@ -220,5 +226,6 @@ func (c *BarkChannel) Start() error {
 }
 
 func (c *BarkChannel) Close() error {
+	c.client.CloseIdleConnections()
 	return nil
 }

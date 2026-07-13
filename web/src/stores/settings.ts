@@ -255,7 +255,7 @@ export const useSettingsStore = defineStore('settings', () => {
         title: barkForm.value.title || DEFAULT_BARK_FORM.title,
         group: barkForm.value.group || '',
         sound: barkForm.value.sound || '',
-        timeout_ms: (Number(barkForm.value.timeout_ms) || DEFAULT_BARK_FORM.timeout_ms) as number
+        timeout_ms: Math.round(Number(barkForm.value.timeout_ms ?? DEFAULT_BARK_FORM.timeout_ms))
       },
     }
   }
