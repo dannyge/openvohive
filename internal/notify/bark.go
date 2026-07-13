@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -21,70 +20,8 @@ type barkPushPayload struct {
 	DeviceKey string `json:"device_key"`
 	Title     string `json:"title,omitempty"`
 	Body      string `json:"body"`
-	Copy      string `json:"copy,omitempty"`
-	AutoCopy  string `json:"autoCopy,omitempty"` // 值为 "1" 时自动复制 copy 字段到剪贴板
 	Group     string `json:"group,omitempty"`
 	Sound     string `json:"sound,omitempty"`
-}
-
-// 验证码提取的正则模式（按优先级排序）
-// 参考: https://stackoverflow.com/questions/59725487
-// 所有模式都加 (?:\D|$) 结束边界，避免从长数字串中截取前 4-8 位
-// 同时加 (?:^|[^\d]) 起始边界（对反向语序模式），避免匹配长数字串尾部
-var verificationCodePatterns = []*regexp.Regexp{
-	// ===== 中文模式 =====
-	// 验证码/动态码/动态密码/校验码/检验码 + [是为：:=]? + 可选空格 + 数字
-	// 匹配: "验证码:123456" "验证码是 123456" "校验码为123456" "动态密码：123456"
-	regexp.MustCompile(`(?:验证码|动态码|动态密码|校验码|检验码)[是为：:=]?\s*(\d{4,8})(?:\D|$)`),
-
-	// ===== 英文模式 =====
-	// 关键词 + 可选 "is/are/:" + 分隔符 + 数字（正向语序）
-	// 匹配: "verification code: 123456" "your code is 123456" "OTP: 123456" "code=123456" "pin 123456"
-	regexp.MustCompile(`(?i)(?:verification\s*code|authentication\s*code|security\s*code|access\s*code|code|otp|passcode|pin)\s*(?:is|are)?\s*[:=]?\s*(\d{4,8})(?:\D|$)`),
-
-	// ===== 反向语序（数字在前） =====
-	// "123456 is your verification/code" "123456为验证码"
-	// 注意: (?:^|[^\d]) 确保 123456 不是长数字串的尾部
-	regexp.MustCompile(`(?:^|[^\d])(\d{4,8})\s*(?:is|are)\s+your\s+(?:verification\s+|authentication\s+|security\s+)?(?:code|otp|passcode|pin)`),
-}
-
-// extractVerificationCode 从短信文本中提取验证码
-// 返回提取到的验证码，未找到则返回空字符串
-// 仅匹配 4-8 位数字（验证码常见长度），不额外过滤年份/手机号
-func extractVerificationCode(text string) string {
-	for _, p := range verificationCodePatterns {
-		matches := p.FindStringSubmatch(text)
-		if len(matches) >= 2 {
-			code := matches[1]
-			// 仅接受 4-8 位数字（验证码常见长度范围）
-			if len(code) >= 4 && len(code) <= 8 {
-				return code
-			}
-		}
-	}
-	return ""
-}
-
-// extractSMSContent 从通知文本中提取纯短信内容
-// 通知格式: "收到新短信 / 蜂窝\n设备  quectel-1\n号码  10086\n时间  ...\n内容  短信正文"
-// 短信正文可能跨多行，匹配到"内容"行后拼接其后的所有行
-func extractSMSContent(text string) string {
-	lines := strings.Split(text, "\n")
-	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), "内容") {
-			// 去掉 "内容" 前缀和空白
-			content := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "内容"))
-			// 拼接后续行（多行短信正文）
-			if i+1 < len(lines) {
-				remaining := strings.TrimSpace(strings.Join(lines[i+1:], "\n"))
-				if remaining != "" {
-					content = content + "\n" + remaining
-				}
-			}
-			return content
-		}
-	}
-	return text
 }
 
 // BarkChannel 实现 Channel 接口的 Bark 推送通知渠道
@@ -141,33 +78,17 @@ func (c *BarkChannel) Send(text string) error {
 }
 
 // SendWithContext 构建 Bark 推送并发送
-// 自动提取验证码设置 copy 字段，实现收到推送后自动复制验证码
 func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
-	smsContent := extractSMSContent(ctx.Text)
-
 	// 构建标题：含设备名
 	title := c.title
 	if label := ctx.DeviceLabel(); label != "" && label != "未知设备" {
 		title = fmt.Sprintf("%s %s", c.title, label)
 	}
 
-	// 从纯短信内容中提取验证码（不从完整通知文本提取，避免匹配到时间/号码等干扰数字）
-	code := extractVerificationCode(smsContent)
-
-	// 构建 copy 和 autoCopy：仅在提取到验证码时才设 autoCopy（避免覆盖用户剪贴板）
-	copyContent := ""
-	autoCopy := ""
-	if code != "" {
-		copyContent = code
-		autoCopy = "1"
-	}
-
 	payload := barkPushPayload{
 		DeviceKey: c.deviceKey,
 		Title:     title,
 		Body:      ctx.Text,
-		Copy:      copyContent,
-		AutoCopy:  autoCopy,
 		Group:     c.group,
 		Sound:     c.sound,
 	}
@@ -191,7 +112,7 @@ func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
 	// 返回给客户端，所以客户端收到的 500 是一个混合体——既可能是临时故障，也可能
 	// 是不可恢复的 token 失效。但考虑到：
 	//   1. 推送没有副作用（失败就是失败，再试不会更糟）
-	//   2. 漏掉一条短信验证码通知的代价远大于多发一次请求
+	//   2. 漏掉一条短信通知的代价远大于多发一次请求
 	// 所以 500 选择重试一次。
 	//
 	// 另外，bark-server 无限流中间件，自身不产生 429，也不返回 Retry-After header。
@@ -225,11 +146,7 @@ func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
 
 		// 2xx → 成功
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			if code != "" {
-				logger.Info("Bark 推送成功（已提取验证码）", "title", title)
-			} else {
-				logger.Info("Bark 推送成功", "title", title)
-			}
+			logger.Info("Bark 推送成功", "title", title)
 			return nil
 		}
 
