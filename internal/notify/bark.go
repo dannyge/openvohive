@@ -31,12 +31,12 @@ type barkPushPayload struct {
 var verificationCodePatterns = []*regexp.Regexp{
 	// 中文：验证码[是为:]\s*(\d{4,8})
 	regexp.MustCompile(`验证码[是为：:]?\s*(\d{4,8})`),
-	// 英文：code[is:=]\s*(\d{4,8})（不区分大小写在编译时已设）
+	// 中文变体：动态码/校验码/验证码
+	regexp.MustCompile(`(?:动态码|校验码|验证码)[：:=\s]*(\d{4,8})`),
+	// 英文：code[is:=]\s*(\d{4,8})
 	regexp.MustCompile(`(?i)code[\s:=]+(\d{4,8})`),
-	// 中文变体：动态码/密码/验证\s*(\d{4,8})
-	regexp.MustCompile(`(?:动态码|密码|校验码|验证码)[：:=\s]*(\d{4,8})`),
-	// 英文变体：OTP/PIN/password\s*(\d{4,8})
-	regexp.MustCompile(`(?i)(?:OTP|PIN|password)[\s:=]+(\d{4,8})`),
+	// 英文：OTP
+	regexp.MustCompile(`(?i)OTP[\s:=]+(\d{4,8})`),
 }
 
 // extractVerificationCode 从短信文本中提取验证码
