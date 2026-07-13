@@ -68,7 +68,7 @@ func extractSMSContent(text string) string {
 			content := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "内容"))
 			// 拼接后续行（多行短信正文）
 			if i+1 < len(lines) {
-				remaining := strings.Join(lines[i+1:], "\n")
+				remaining := strings.TrimSpace(strings.Join(lines[i+1:], "\n"))
 				if remaining != "" {
 					content = content + "\n" + remaining
 				}
