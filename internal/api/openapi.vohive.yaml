@@ -488,6 +488,28 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorMessage'
 
+  /settings/notifications/bark/test:
+    post:
+      tags: [settings]
+      summary: 使用当前 Bark 配置发送测试通知（不落盘）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestBarkRequest'
+      responses:
+        '200':
+          description: 测试发送结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestBarkResponse'
+        '400':
+          $ref: '#/components/responses/ErrorMessage'
+        '500':
+          $ref: '#/components/responses/ErrorMessage'
+
   /settings/notifications/weixin/qr/start:
     post:
       tags: [settings]
@@ -2324,6 +2346,33 @@ components:
           type: array
           items:
             type: string
+
+    TestBarkRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        server_url:
+          type: string
+          description: Bark 服务器地址，为空时使用官方 https://api.day.app
+        device_key:
+          type: string
+        title:
+          type: string
+        group:
+          type: string
+        sound:
+          type: string
+        timeout_ms:
+          type: integer
+
+    TestBarkResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
 
     StartWeixinQRRequest:
       type: object

@@ -143,6 +143,21 @@ export type TestEmailResponse = {
   message: string
 }
 
+export type TestBarkPayload = {
+  enabled: boolean
+  server_url: string
+  device_key: string
+  title: string
+  group: string
+  sound: string
+  timeout_ms: number
+}
+
+export type TestBarkResponse = {
+  ok: boolean
+  message: string
+}
+
 export const systemService = {
   getInfo() {
     return callService(async () => {
@@ -180,6 +195,12 @@ export const systemService = {
   testEmail(payload: TestEmailPayload) {
     return callService(async () => {
       const res = await api.post<TestEmailResponse>('/settings/notifications/email/test', payload)
+      return res.data
+    })
+  },
+  testBark(payload: TestBarkPayload) {
+    return callService(async () => {
+      const res = await api.post<TestBarkResponse>('/settings/notifications/bark/test', payload)
       return res.data
     })
   }

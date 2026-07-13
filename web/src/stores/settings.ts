@@ -9,7 +9,8 @@ import {
   type SystemInfo,
   type TestWebhookResponse,
   type WebhookSettings,
-  type TestEmailResponse
+  type TestEmailResponse,
+  type TestBarkResponse
 } from '../services/system'
 
 const DEFAULT_SYSTEM_INFO: SystemInfo = {
@@ -137,6 +138,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const savingNotifications = ref(false)
   const testingWebhook = ref(false)
   const testingEmail = ref(false)
+  const testingBark = ref(false)
   const changingPassword = ref(false)
 
   const error = ref<AppError | null>(null)
@@ -308,6 +310,25 @@ export const useSettingsStore = defineStore('settings', () => {
     return result as { ok: true; data: TestEmailResponse } | { ok: false; error: AppError }
   }
 
+  async function testBarkFromForm() {
+    testingBark.value = true
+    const payload = {
+      enabled: !!barkForm.value.enabled,
+      server_url: barkForm.value.server_url || '',
+      device_key: String(barkForm.value.device_key || '').trim(),
+      title: barkForm.value.title || '',
+      group: barkForm.value.group || '',
+      sound: barkForm.value.sound || '',
+      timeout_ms: Math.round(Number(barkForm.value.timeout_ms ?? DEFAULT_BARK_FORM.timeout_ms))
+    }
+    const result = await systemService.testBark(payload)
+    if (!result.ok) {
+      error.value = result.error
+    }
+    testingBark.value = false
+    return result as { ok: true; data: TestBarkResponse } | { ok: false; error: AppError }
+  }
+
   async function changePassword(payload: { old_password: string; new_password: string; confirm_password: string }) {
     changingPassword.value = true
     const result = await systemService.changePassword(payload)
@@ -339,6 +360,7 @@ export const useSettingsStore = defineStore('settings', () => {
     savingNotifications,
     testingWebhook,
     testingEmail,
+    testingBark,
     changingPassword,
     error,
     fetchSystemInfo,
@@ -347,6 +369,7 @@ export const useSettingsStore = defineStore('settings', () => {
     saveNotificationsFromForms,
     testWebhookFromForm,
     testEmailFromForm,
+    testBarkFromForm,
     changePassword,
     changePasswordFromForm,
     resetPasswordForm

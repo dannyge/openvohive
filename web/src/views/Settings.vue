@@ -16,7 +16,7 @@ import {
 } from '@vicons/fluent'
 
 const settingsStore = useSettingsStore()
-const { systemInfo, loadingNotifications, savingNotifications, testingWebhook, testingEmail, changingPassword, passwordForm, telegramForm, webhookSettings, emailForm, barkForm } = storeToRefs(settingsStore)
+const { systemInfo, loadingNotifications, savingNotifications, testingWebhook, testingEmail, testingBark, changingPassword, passwordForm, telegramForm, webhookSettings, emailForm, barkForm } = storeToRefs(settingsStore)
 const activeNotifyTab = ref('telegram')
 
 
@@ -38,6 +38,8 @@ const hasValidEmailConfig = computed(() => {
     emailForm.value.to_addresses
   )
 })
+
+const hasValidBarkConfig = computed(() => !!barkForm.value.device_key)
 
 
 async function changePassword() {
@@ -197,6 +199,23 @@ async function testEmailNotification() {
     ElMessage.error(data.message || 'Email 测试失败')
   } catch (e: unknown) {
     ElMessage.error(e instanceof Error ? e.message : 'Email 测试失败')
+  }
+}
+
+async function testBarkNotification() {
+  try {
+    const result = await settingsStore.testBarkFromForm()
+    if (!result.ok) {
+      throw new Error(result.error.message || 'Bark 测试失败')
+    }
+    const data = result.data
+    if (data.ok) {
+      ElMessage.success(data.message || '测试 Bark 推送已发送')
+      return
+    }
+    ElMessage.error(data.message || 'Bark 测试失败')
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : 'Bark 测试失败')
   }
 }
 
@@ -557,10 +576,28 @@ onBeforeUnmount(() => {
                   <div class="flex items-center gap-2">
                     <div class="font-bold text-gray-800 dark:text-gray-100">启用 Bark 推送</div>
                   </div>
-                  <el-switch v-model="barkForm.enabled" />
+                  <div class="flex items-center gap-2">
+                    <el-button
+                      size="small"
+                      type="primary"
+                      plain
+                      :loading="testingBark"
+                      :disabled="!barkForm.enabled || !hasValidBarkConfig"
+                      @click="testBarkNotification"
+                    >
+                      测试通知
+                    </el-button>
+                    <el-switch v-model="barkForm.enabled" />
+                  </div>
                 </div>
 
                 <div class="space-y-4">
+                  <div class="text-xs text-gray-400 dark:text-gray-500">
+                    Bark 是 iOS 推送工具，
+                    <a href="https://bark.day.app/" target="_blank" rel="noopener" class="text-blue-500 hover:text-blue-600 underline">查看官方文档 ↗</a>
+                    ｜
+                    <a href="https://github.com/Finb/bark-server/blob/master/docs/API_V2.md" target="_blank" rel="noopener" class="text-blue-500 hover:text-blue-600 underline">API 文档 ↗</a>
+                  </div>
                   <div class="space-y-1">
                     <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">服务器地址 (Server URL)</label>
                     <el-input v-model="barkForm.server_url" :disabled="!barkForm.enabled" placeholder="https://api.day.app（官方）或 http://your-ip:port（自建）" />
