@@ -226,6 +226,8 @@ func (c *BarkChannel) Start() error {
 }
 
 func (c *BarkChannel) Close() error {
-	c.client.CloseIdleConnections()
+	if c.client != nil {
+		c.client.CloseIdleConnections()
+	}
 	return nil
 }
