@@ -39,12 +39,13 @@ var verificationCodePatterns = []*regexp.Regexp{
 
 // extractVerificationCode 从短信文本中提取验证码
 // 返回提取到的验证码，未找到则返回空字符串
+// 仅匹配 4-8 位数字（验证码常见长度），不额外过滤年份/手机号
 func extractVerificationCode(text string) string {
 	for _, p := range verificationCodePatterns {
 		matches := p.FindStringSubmatch(text)
 		if len(matches) >= 2 {
 			code := matches[1]
-			// 过滤掉明显不是验证码的数字（如年份 20xx、手机号片段）
+			// 仅接受 4-8 位数字（验证码常见长度范围）
 			if len(code) >= 4 && len(code) <= 8 {
 				return code
 			}
@@ -158,7 +159,7 @@ func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
 
 	url := fmt.Sprintf("%s/push", c.serverURL)
 
-	// 带一次重试（每次重新构建 request，因为 req.Body 被读后不可复用）
+	// 最多尝试 2 次（1 次原始请求 + 1 次重试），每次重新构建 request
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
 		req, err := http.NewRequest("POST", url, bytes.NewReader(body))

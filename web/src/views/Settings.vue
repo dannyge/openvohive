@@ -586,7 +586,7 @@ onBeforeUnmount(() => {
                     </div>
                     <div class="space-y-1">
                       <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">超时 (ms)</label>
-                      <el-input v-model="barkForm.timeout_ms" :disabled="!barkForm.enabled" type="number" inputmode="numeric" placeholder="5000" />
+                      <el-input-number v-model="barkForm.timeout_ms" :disabled="!barkForm.enabled" :min="500" :max="30000" :step="500" controls-position="right" placeholder="5000" />
                     </div>
                   </div>
                 </div>
