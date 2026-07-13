@@ -28,15 +28,16 @@ type barkPushPayload struct {
 }
 
 // 验证码提取的正则模式（按优先级排序）
+// 所有模式都加 (?:\D|$) 结束边界，避免从长数字串中截取前 8 位
 var verificationCodePatterns = []*regexp.Regexp{
 	// 中文：验证码[是为:]\s*(\d{4,8})
-	regexp.MustCompile(`验证码[是为：:]?\s*(\d{4,8})`),
+	regexp.MustCompile(`验证码[是为：:]?\s*(\d{4,8})(?:\D|$)`),
 	// 中文变体：动态码/校验码/验证码
-	regexp.MustCompile(`(?:动态码|校验码|验证码)[：:=\s]*(\d{4,8})`),
+	regexp.MustCompile(`(?:动态码|校验码|验证码)[：:=\s]*(\d{4,8})(?:\D|$)`),
 	// 英文：code[is:=]\s*(\d{4,8})
-	regexp.MustCompile(`(?i)code[\s:=]+(\d{4,8})`),
+	regexp.MustCompile(`(?i)code[\s:=]+(\d{4,8})(?:\D|$)`),
 	// 英文：OTP
-	regexp.MustCompile(`(?i)OTP[\s:=]+(\d{4,8})`),
+	regexp.MustCompile(`(?i)OTP[\s:=]+(\d{4,8})(?:\D|$)`),
 }
 
 // extractVerificationCode 从短信文本中提取验证码
@@ -63,9 +64,8 @@ func extractSMSContent(text string) string {
 	lines := strings.Split(text, "\n")
 	for i, line := range lines {
 		if strings.HasPrefix(strings.TrimSpace(line), "内容") {
-			// 去掉 "内容  " 前缀
-			content := strings.TrimPrefix(strings.TrimSpace(line), "内容")
-			content = strings.TrimSpace(strings.TrimPrefix(content, " "))
+			// 去掉 "内容" 前缀和空白
+			content := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "内容"))
 			// 拼接后续行（多行短信正文）
 			if i+1 < len(lines) {
 				remaining := strings.Join(lines[i+1:], "\n")
