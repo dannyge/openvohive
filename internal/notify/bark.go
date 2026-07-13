@@ -28,16 +28,24 @@ type barkPushPayload struct {
 }
 
 // 验证码提取的正则模式（按优先级排序）
-// 所有模式都加 (?:\D|$) 结束边界，避免从长数字串中截取前 8 位
+// 参考: https://stackoverflow.com/questions/59725487
+// 所有模式都加 (?:\D|$) 结束边界，避免从长数字串中截取前 4-8 位
+// 同时加 (?:^|[^\d]) 起始边界（对反向语序模式），避免匹配长数字串尾部
 var verificationCodePatterns = []*regexp.Regexp{
-	// 中文：验证码[是为:]\s*(\d{4,8})
-	regexp.MustCompile(`验证码[是为：:]?\s*(\d{4,8})(?:\D|$)`),
-	// 中文变体：动态码/校验码/验证码 [是为:]\s*(\d{4,8})
-	regexp.MustCompile(`(?:动态码|校验码|验证码)[是为：:=]?\s*(\d{4,8})(?:\D|$)`),
-	// 英文：code[is:=]\s*(\d{4,8})
-	regexp.MustCompile(`(?i)code[\s:=]+(\d{4,8})(?:\D|$)`),
-	// 英文：OTP
-	regexp.MustCompile(`(?i)OTP[\s:=]+(\d{4,8})(?:\D|$)`),
+	// ===== 中文模式 =====
+	// 验证码/动态码/动态密码/校验码/检验码 + [是为：:=]? + 可选空格 + 数字
+	// 匹配: "验证码:123456" "验证码是 123456" "校验码为123456" "动态密码：123456"
+	regexp.MustCompile(`(?:验证码|动态码|动态密码|校验码|检验码)[是为：:=]?\s*(\d{4,8})(?:\D|$)`),
+
+	// ===== 英文模式 =====
+	// 关键词 + 可选 "is/are/:" + 分隔符 + 数字（正向语序）
+	// 匹配: "verification code: 123456" "your code is 123456" "OTP: 123456" "code=123456" "pin 123456"
+	regexp.MustCompile(`(?i)(?:verification\s*code|authentication\s*code|security\s*code|access\s*code|code|otp|passcode|pin)\s*(?:is|are)?\s*[:=]?\s*(\d{4,8})(?:\D|$)`),
+
+	// ===== 反向语序（数字在前） =====
+	// "123456 is your verification/code" "123456为验证码"
+	// 注意: (?:^|[^\d]) 确保 123456 不是长数字串的尾部
+	regexp.MustCompile(`(?:^|[^\d])(\d{4,8})\s*(?:is|are)\s+your\s+(?:verification\s+|authentication\s+|security\s+)?(?:code|otp|passcode|pin)`),
 }
 
 // extractVerificationCode 从短信文本中提取验证码

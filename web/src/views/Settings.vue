@@ -203,6 +203,10 @@ async function testEmailNotification() {
 }
 
 async function testBarkNotification() {
+  if (!barkForm.value.device_key?.trim()) {
+    ElMessage.warning('请先填写 Bark Device Key')
+    return
+  }
   try {
     const result = await settingsStore.testBarkFromForm()
     if (!result.ok) {
