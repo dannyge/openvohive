@@ -39,10 +39,6 @@ const hasValidEmailConfig = computed(() => {
   )
 })
 
-const hasValidBarkConfig = computed(() => {
-  return !!barkForm.value.device_key
-})
-
 
 async function changePassword() {
   if (passwordForm.value.new_password !== passwordForm.value.confirm_password) {

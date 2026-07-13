@@ -157,15 +157,16 @@ func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
 	}
 
 	url := fmt.Sprintf("%s/push", c.serverURL)
-	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("bark 请求创建失败: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 
-	// 带一次重试
+	// 带一次重试（每次重新构建 request，因为 req.Body 被读后不可复用）
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
+		req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("bark 请求创建失败: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json; charset=utf-8")
+
 		resp, err := c.client.Do(req)
 		if err != nil {
 			lastErr = err
@@ -178,7 +179,7 @@ func (c *BarkChannel) SendWithContext(ctx NotificationContext) error {
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			if code != "" {
-				logger.Info("Bark 推送成功", "code_extracted", code, "title", title)
+				logger.Info("Bark 推送成功（已提取验证码）", "title", title)
 			} else {
 				logger.Info("Bark 推送成功", "title", title)
 			}
