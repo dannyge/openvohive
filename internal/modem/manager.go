@@ -723,14 +723,19 @@ RespLoop:
 				break RespLoop
 			} else if m.isURC(line) {
 				// 对于确认为 URC 的行，始终分发出去
-				m.handleURC(line)
+				// 但用 fromCommand=true 告知这是命令响应期间收到的，
+				// 避免查询响应（+CPIN/+CREG/+QSIMSTAT 等）被误当异步 URC 打 INFO 日志或触发副作用
+				m.handleURCCore(line, true)
 
-				// 但仅当它是某些明确的、完全异步的事件（如短信通知、来电、USSD、插拔卡）时，才将其从当前命令的 fullResponse 中剔除，以免污染解析器
-				// 其余如 +CIMI:, +QCCID:, +CSQ: 实际上既是 URC 也是命令回显，必须被当前命令捕获！
+				// 但仅当它是某些明确的、完全异步的事件（如短信通知、来电、USSD）时，才将其从当前命令的 fullResponse 中剔除，以免污染解析器
+				// 其余如 +CIMI:, +QCCID:, +CSQ:, +CPIN:, +CREG:, +QSIMSTAT: 实际上既是 URC 也是命令回显，必须被当前命令捕获！
+				// 注意：+QSIMSTAT 从白名单移除——它既是异步 URC（SIM 插拔时上报），
+				//   也是 AT+QSIMSTAT? 的响应。保留在 fullResponse 中才能被 parseQSIMSTATInserted 解析，
+				//   避免 fallback 到 AT+CPIN?（减少每分钟健康检查的冗余查询和日志噪声）。
 				isPureAsyncURC := func(s string) bool {
 					key := urcKey(s)
 					switch key {
-					case "+CUSD", "+CMTI", "RING", "+CLIP", "+QSIMSTAT", "+QSTKURC", "+QPCMV":
+					case "+CUSD", "+CMTI", "RING", "+CLIP", "+QSTKURC", "+QPCMV":
 						return true
 					}
 					return false
@@ -1304,14 +1309,29 @@ func (m *Manager) dispatchSIMStatusURC(inserted *bool, state string) {
 	}
 }
 
-// handleURC 处理 URC
+// handleURC 处理 URC（空闲态收到，即真正的异步 URC）
 func (m *Manager) handleURC(line string) {
+	m.handleURCCore(line, false)
+}
+
+// handleURCCore 处理 URC 行的核心逻辑
+// fromCommand=true 表示该行来自命令响应期间（可能是查询响应被误判为 URC），
+// 此时对 +QSIMSTAT/+CPIN/+CREG 等类型降级日志、抑制副作用（不触发 dispatchRDY 等）。
+func (m *Manager) handleURCCore(line string, fromCommand bool) {
 	s := strings.TrimSpace(line)
 	if s == "" {
 		return
 	}
 
 	fr := m.formatURC(s)
+
+	// 命令响应期间的 +QSIMSTAT/+CPIN/+CREG/+CGREG/+CEREG 是查询响应，不是真正的异步 URC：
+	// 降为 Debug 日志，避免每分钟健康检查刷屏
+	if fromCommand && (fr.Key == "+QSIMSTAT" || fr.Key == "+CPIN" ||
+		fr.Key == "+CREG" || fr.Key == "+CGREG" || fr.Key == "+CEREG") {
+		fr.Level = urcLogDebug
+	}
+
 	msg := fmt.Sprintf("[%s] %s", m.cfg.ID, fr.Msg)
 	switch fr.Level {
 	case urcLogWarn:
@@ -1324,10 +1344,11 @@ func (m *Manager) handleURC(line string) {
 
 	// 模组重启信号：广播给所有 SubscribeRDY() 的等待方。
 	// 部分 EC20 固件重启后不发 RDY，而是直接发 +CPIN: READY，两者都作为就绪信号处理。
-	if fr.Key == "RDY" {
+	// 但命令响应期间的 +CPIN: READY 不是模组重启，不应触发。
+	if fr.Key == "RDY" && !fromCommand {
 		m.dispatchRDY()
 	}
-	if fr.Key == "+CPIN" {
+	if fr.Key == "+CPIN" && !fromCommand {
 		state := ""
 		for i := 0; i+1 < len(fr.Fields); i += 2 {
 			if k, _ := fr.Fields[i].(string); k == "state" {
@@ -1341,7 +1362,7 @@ func (m *Manager) handleURC(line string) {
 		m.dispatchSIMStatusURC(nil, state)
 	}
 
-	if fr.Key == "+QSIMSTAT" {
+	if fr.Key == "+QSIMSTAT" && !fromCommand {
 		var inserted *bool
 		for i := 0; i+1 < len(fr.Fields); i += 2 {
 			if k, _ := fr.Fields[i].(string); k == "inserted" {
