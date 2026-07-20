@@ -96,11 +96,18 @@ func main() {
 		logger.Warn("读取旧 yaml 策略失败，跳过种子迁移", "err", err)
 	}
 
+	// 通知管理器：内部采用 fail-soft 设计，单个渠道初始化失败只跳过该渠道，
+	// 不会让整体失败。只有 cfg 本身为 nil 这种程序错误才会走到 err 分支。
+	// 若未注册 notifier，pool 会静默丢弃 SMS 通知（pool_sms.go / poller.go 的
+	// nil 检查），因此这里必须显式记日志提醒运维。
 	notifyMgr, err := notify.NewManager(cfg, pool)
 	if err != nil {
-		logger.Warn("通知管理器初始化异常", "err", err)
+		logger.Error("通知管理器初始化异常，SMS/IP 切换等通知将被静默丢弃", "err", err)
+	} else if len(notifyMgr.GetChannelNames()) == 0 {
+		logger.Warn("通知管理器已启动，但没有可用的通知渠道（检查各渠道初始化失败日志）")
 	} else {
 		pool.SetNotifier(notifyMgr)
+		logger.Info("通知管理器已启动", "channels", notifyMgr.GetChannelNames())
 	}
 
 

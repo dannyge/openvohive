@@ -59,6 +59,11 @@ func NewManager(cfg *config.Config, pool *device.Pool) (*Manager, error) {
 }
 
 // initChannels 根据配置创建并启动所有通知渠道
+//
+// 弹性策略：单个渠道初始化失败（网络抖动、配置错误等）只记日志并跳过，
+// 不再拖垮整个 notify manager。否则一次 Telegram 网络抖动 / Bark 配置笔误
+// 就会让所有通知渠道一起失效，SMS 收到后 pool.notifier 为 nil 被静默丢弃。
+// 历史上曾因 Telegram getMe EOF 导致 5 天 SMS 通知全部静默丢失。
 func (m *Manager) initChannels(cfg *config.Config) error {
 	m.channels = nil
 
@@ -66,10 +71,8 @@ func (m *Manager) initChannels(cfg *config.Config) error {
 	if cfg.Telegram.Enabled {
 		tg, err := NewTelegramChannel(cfg.Telegram)
 		if err != nil {
-			logger.Error("初始化 Telegram 渠道失败", "err", err)
-			return err
-		}
-		if tg != nil {
+			logger.Error("初始化 Telegram 渠道失败，跳过该渠道（不影响其他通知渠道）", "err", err)
+		} else if tg != nil {
 			m.channels = append(m.channels, tg)
 		}
 	}
@@ -78,10 +81,8 @@ func (m *Manager) initChannels(cfg *config.Config) error {
 	if cfg.Webhook.Enabled {
 		wh, err := NewWebhookChannel(cfg.Webhook)
 		if err != nil {
-			logger.Error("初始化 Webhook 渠道失败", "err", err)
-			return err
-		}
-		if wh != nil {
+			logger.Error("初始化 Webhook 渠道失败，跳过该渠道（不影响其他通知渠道）", "err", err)
+		} else if wh != nil {
 			m.channels = append(m.channels, wh)
 		}
 	}
@@ -89,10 +90,8 @@ func (m *Manager) initChannels(cfg *config.Config) error {
 	if cfg.Email.Enabled {
 		em, err := NewEmailChannel(cfg.Email)
 		if err != nil {
-			logger.Error("初始化 Email 渠道失败", "err", err)
-			return err
-		}
-		if em != nil {
+			logger.Error("初始化 Email 渠道失败，跳过该渠道（不影响其他通知渠道）", "err", err)
+		} else if em != nil {
 			m.channels = append(m.channels, em)
 		}
 	}
@@ -100,12 +99,14 @@ func (m *Manager) initChannels(cfg *config.Config) error {
 	if cfg.Bark.Enabled {
 		bk, err := NewBarkChannel(cfg.Bark)
 		if err != nil {
-			logger.Error("初始化 Bark 渠道失败", "err", err)
-			return err
-		}
-		if bk != nil {
+			logger.Error("初始化 Bark 渠道失败，跳过该渠道（不影响其他通知渠道）", "err", err)
+		} else if bk != nil {
 			m.channels = append(m.channels, bk)
 		}
+	}
+
+	if len(m.channels) == 0 {
+		logger.Warn("所有通知渠道均未初始化成功，SMS 通知将被静默丢弃（检查上方各渠道初始化日志）")
 	}
 
 	// 向所有渠道注册命令
@@ -151,6 +152,9 @@ func (m *Manager) Close() {
 }
 
 // UpdateConfig 重新加载通知配置（热更新）
+//
+// 先关闭现有渠道再重新初始化。得益于 initChannels 的 fail-soft 设计，
+// 单个渠道初始化失败不会让 channels 清空——其他渠道仍会被重建。
 func (m *Manager) UpdateConfig(cfg *config.Config) error {
 	// 关闭现有渠道
 	m.Close()
